@@ -1,3 +1,6 @@
+// Pre-v2 shapes, kept only for the localStorage migration (lib/migrate-legacy-storage.ts).
+// The live schema is types/atlas.ts.
+
 export type KanbanStage = 'identified' | 'emailed' | 'replied' | 'applied' | 'decision'
 
 export interface Professor {
@@ -60,4 +63,24 @@ export interface University {
 export interface AgentMessage {
   role: 'user' | 'assistant'
   content: string
+}
+
+export interface GRESession {
+  id: string
+  date: string
+  quant: number
+  verbal: number
+  awa: number
+  notes: string
+}
+
+export interface Deadline {
+  id: string
+  university: string
+  program: string
+  deadline: string
+  round?: string
+  gre_required: boolean
+  applied: boolean
+  notes: string
 }
