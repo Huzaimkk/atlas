@@ -23,6 +23,7 @@ import {
   mockArchive,
 } from '@/data/mock/atlas-mock'
 import type { AtlasData } from '@/lib/fetch-atlas-data'
+import { CommandBar } from '@/components/atlas/command-bar'
 import { ActionQueueView } from '@/components/views/action-queue'
 import { GapQueueView } from '@/components/views/gap-queue'
 import { PoolView } from '@/components/views/pool'
@@ -72,6 +73,10 @@ export function AppShell({ realData }: { realData?: AtlasData }) {
             A
           </div>
           <span className="text-sm font-semibold tracking-tight">Atlas</span>
+        </div>
+
+        <div className="px-2 pb-2">
+          <CommandBar />
         </div>
 
         <nav className="flex-1 space-y-0.5 px-2">
