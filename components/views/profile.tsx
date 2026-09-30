@@ -1,7 +1,8 @@
-import { UserCircle, CheckCircle2, Circle, FileEdit } from 'lucide-react'
+import { UserCircle, CheckCircle2, Circle, FileEdit, Clock } from 'lucide-react'
 import type { ProfileSnapshot } from '@/types/atlas'
 import { EmptyState } from '@/components/atlas/empty-state'
 import { cn } from '@/lib/utils'
+import { postDegreeHours } from '@/lib/atlas-format'
 
 const DOCUMENT_LABELS: Record<keyof ProfileSnapshot['document_inventory'], string> = {
   sop: 'Statement of purpose',
@@ -51,21 +52,26 @@ export function ProfileView({ profile }: { profile: ProfileSnapshot | null }) {
               <Row label="Current degree" value={profile.identity.current_degree_level} />
               <Row label="Institution" value={profile.identity.current_institution} />
               <Row label="Funding requirement" value={profile.identity.funding_requirement === 'fully_funded_only' ? 'Fully funded only' : 'Flexible'} />
+              <Row label="Target degree levels" value={profile.identity.target_degree_levels.join(' + ') || '—'} />
             </dl>
           </section>
 
           <section className="space-y-2 rounded-lg border border-border p-4">
             <h2 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Credentials</h2>
             <dl className="space-y-1 text-sm">
-              {profile.credentials.language_test && (
-                <Row
-                  label={profile.credentials.language_test.test}
-                  value={`${profile.credentials.language_test.score} · ${profile.credentials.language_test.status}`}
-                />
-              )}
-              {profile.credentials.gre && <Row label="GRE" value={profile.credentials.gre.status.replace('_', ' ')} />}
+              <Row
+                label="Post-degree hours"
+                value={
+                  profile.degree_completed_on
+                    ? `${postDegreeHours(profile.degree_completed_on, profile.full_time_hours_per_month).toLocaleString()} (computed today)`
+                    : 'no degree_completed_on set'
+                }
+              />
               {profile.credentials.degrees.map((d) => (
                 <Row key={d.name} label={d.name} value={`${d.institution} · ${d.date}${d.cgpa ? ` · ${d.cgpa}` : ''}`} />
+              ))}
+              {profile.credentials.certifications.map((c) => (
+                <Row key={c} label="Certification" value={c} />
               ))}
             </dl>
           </section>
@@ -94,6 +100,27 @@ export function ProfileView({ profile }: { profile: ProfileSnapshot | null }) {
               ))}
             </ul>
           </section>
+
+          {profile.pending_items.length > 0 && (
+            <section className="space-y-2 rounded-lg border border-border p-4 sm:col-span-2">
+              <h2 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Pending — not yet achieved</h2>
+              <ul className="space-y-1.5 text-sm">
+                {profile.pending_items.map((p) => (
+                  <li key={p.item} className="flex items-center justify-between gap-3">
+                    <span className="flex items-center gap-1.5 text-foreground">
+                      <Clock className="size-3.5 text-verdict-gap" strokeWidth={1.75} />
+                      {p.item}
+                      {p.note && <span className="text-xs text-muted-foreground">— {p.note}</span>}
+                    </span>
+                    <span className="shrink-0 font-mono text-2xs text-faint-foreground">
+                      {p.status.replace('_', ' ')}
+                      {p.expected_completion ? ` · expected ${p.expected_completion}` : ''}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </section>
+          )}
 
           {profile.network.length > 0 && (
             <section className="space-y-2 rounded-lg border border-border p-4 sm:col-span-2">

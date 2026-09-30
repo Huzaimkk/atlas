@@ -52,16 +52,20 @@ export interface FundingDetails {
   notes?: string
 }
 
-export interface EligibilityRules {
-  citizenship_allowed?: string[]
-  citizenship_excluded?: string[]
-  degree_level?: string[]
-  age_cap?: number
-  language_test?: { test: 'IELTS' | 'TOEFL'; min_score: number }
-  gre_required?: boolean
-  gender_restriction?: string
-  region_restriction?: string
-  notes?: string
+export type RuleType = 'mechanical' | 'discretionary'
+
+/**
+ * One structured eligibility rule, independently classified (profile v5
+ * §5.7). Only a 'mechanical' rule may ever justify a BLOCKED verdict — a
+ * 'discretionary' one ("normally requires...", "preferred...") can at
+ * most produce GAP. source_quote + source_url are required whenever this
+ * rule is the basis for BLOCKED (v5 §5.6's standard of proof).
+ */
+export interface EligibilityRule {
+  rule_text: string
+  rule_type: RuleType
+  source_quote: string
+  source_url: string
 }
 
 export type RequirementType =
@@ -88,13 +92,21 @@ export interface Opportunity {
   title: string
   track: Track
   category: Category
+  // Cross-cutting tag independent of `category` — UK CDTs, Max Planck
+  // Schools, IMPRS, OIST's 5-year integrated PhD, Canadian direct-entry
+  // (profile v5 §7): funded doctoral routes built for bachelor's holders.
+  integrated_phd_fast_track: boolean
   institution: string
   country?: string
   region?: string
   supervisor?: Supervisor
   field_tags: string[]
   funding?: FundingDetails
-  eligibility: EligibilityRules
+  // Per-row, never per-country (profile v5 §5.1 correction). Empty array
+  // means unstated/ambiguous on the programme's own page — the engine
+  // must treat that as GAP (verify entry route), never BLOCKED.
+  degree_levels_accepted: string[]
+  eligibility_rules: EligibilityRule[]
   requirements: Requirement[]
   opens?: string
   deadline?: string
@@ -142,7 +154,12 @@ export interface Verdict {
   opportunity_id: string
   type: VerdictType
   snapshot_version: number
-  reason?: string // required narrative for BLOCKED (spec §5.1)
+  rule_type?: RuleType // profile v5 §5.7 — only 'mechanical' may ever justify BLOCKED
+  reason?: string // narrative, any verdict type
+  // Required together whenever type === 'BLOCKED' (profile v5 §5.6 standard
+  // of proof) — enforced at the DB level too, not just here.
+  blocking_rule_quote?: string
+  blocking_rule_source_url?: string
   gaps?: OpportunityGap[] // populated when type === 'GAP'
   fit_score?: number // 0-100, only meaningful once eligibility passes (spec §5.4)
   computed_at: string
@@ -162,6 +179,15 @@ export interface AggregatedGap {
 
 // ---- Layer 1 — Profile Engine (spec §3) ----------------------------------
 
+/** A paper, credential or record in progress — not an achievement until it completes (profile v5 §4). */
+export interface PendingItem {
+  item: string
+  type: GapType
+  status: 'in_progress' | 'not_started'
+  expected_completion: string | null // null when no date is known yet — never fabricated
+  note?: string
+}
+
 export interface ProfileSnapshot {
   version: number
   created_at: string
@@ -172,14 +198,18 @@ export interface ProfileSnapshot {
     funding_requirement: 'fully_funded_only' | 'flexible'
     term_flexibility: string
     geography: string
+    // Master's and PhD tracks run in parallel and both must surface
+    // (profile v5 §1) — never collapsed to a single target.
+    target_degree_levels: string[]
   }
   credentials: {
     degrees: { name: string; institution: string; date: string; cgpa?: string }[]
-    language_test?: { test: 'IELTS' | 'TOEFL'; score: number; status: 'taken' | 'registered' | 'not_started' }
-    gre?: { status: 'taken' | 'registered' | 'not_started'; verbal?: number; quant?: number; awa?: number }
     certifications: string[]
+    // No language_test / gre fields here by design — v5 §4 requires these
+    // modeled as pending_items (below) until actually achieved, not as
+    // credentials with a score that reads like an accomplished fact.
   }
-  research_fingerprint: string[] // 5-8 subfields, spec §3
+  research_fingerprint: string[]
   evidence: {
     publications: { title: string; venue: string; authorship: string; date: string }[]
     preprints: string[]
@@ -193,6 +223,11 @@ export interface ProfileSnapshot {
     'ready' | 'draft' | 'missing'
   >
   network: { professor: string; institution: string; date: string; outcome: string }[]
+  pending_items: PendingItem[]
+  // Backing fields for the post_degree_hours() SQL function — computed at
+  // query time against current_date, never stored as a number (v5 §5.5).
+  degree_completed_on: string | null
+  full_time_hours_per_month: number
 }
 
 // ---- Channel C — lab watchlist (spec §7, §9b) -----------------------------

@@ -56,3 +56,17 @@ export function formatFunding(stipend?: { amount: number; currency: string; peri
   if (!stipend) return '—'
   return `${stipend.currency} ${stipend.amount.toLocaleString()}/${stipend.period}`
 }
+
+/**
+ * Mirrors the post_degree_hours() SQL function (supabase/migrations/0001)
+ * for client-side display — same average-month approximation, evaluated
+ * against "now" rather than stored. Kept in sync manually; the database
+ * function is the source of truth verdicts are actually computed against.
+ */
+export function postDegreeHours(degreeCompletedOn: string | null, fullTimeHoursPerMonth: number, asOf = new Date()): number {
+  if (!degreeCompletedOn) return 0
+  const completed = new Date(degreeCompletedOn + 'T00:00:00')
+  if (completed > asOf) return 0
+  const months = (asOf.getTime() - completed.getTime()) / (2629800 * 1000)
+  return Math.round(months * fullTimeHoursPerMonth * 10) / 10
+}
