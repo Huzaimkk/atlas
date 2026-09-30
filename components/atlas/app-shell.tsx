@@ -22,6 +22,7 @@ import {
   mockProfile,
   mockArchive,
 } from '@/data/mock/atlas-mock'
+import type { AtlasData } from '@/lib/fetch-atlas-data'
 import { ActionQueueView } from '@/components/views/action-queue'
 import { GapQueueView } from '@/components/views/gap-queue'
 import { PoolView } from '@/components/views/pool'
@@ -42,17 +43,26 @@ const VIEWS = [
 
 type ViewId = (typeof VIEWS)[number]['id']
 
-export function AppShell() {
+const EMPTY: AtlasData = { opportunities: [], verdicts: [], gaps: [], watchlist: [], inbox: [], profile: null, archive: [] }
+
+/**
+ * `realData` comes from a server-side Supabase read (RLS denies the anon
+ * key entirely — see lib/fetch-atlas-data.ts). The "Mock data" toggle
+ * previews the fixture in data/mock/atlas-mock.ts instead; it defaults
+ * off, so the real pool is what's shown by default.
+ */
+export function AppShell({ realData }: { realData?: AtlasData }) {
   const [active, setActive] = useState<ViewId>('action-queue')
   const [preview, setPreview] = useState(false)
 
-  const opportunities = preview ? mockOpportunities : []
-  const verdicts = preview ? mockVerdicts : []
-  const gaps = preview ? mockAggregatedGaps : []
-  const watchlist = preview ? mockWatchlist : []
-  const inbox = preview ? mockInbox : []
-  const archive = preview ? mockArchive : []
-  const profile = preview ? mockProfile : null
+  const live = realData ?? EMPTY
+  const opportunities = preview ? mockOpportunities : live.opportunities
+  const verdicts = preview ? mockVerdicts : live.verdicts
+  const gaps = preview ? mockAggregatedGaps : live.gaps
+  const watchlist = preview ? mockWatchlist : live.watchlist
+  const inbox = preview ? mockInbox : live.inbox
+  const archive = preview ? mockArchive : live.archive
+  const profile = preview ? mockProfile : live.profile
 
   return (
     <div className="flex h-screen w-full overflow-hidden">

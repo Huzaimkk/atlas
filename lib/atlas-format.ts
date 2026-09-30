@@ -1,4 +1,4 @@
-import type { Status, Tier, VerdictType } from '@/types/atlas'
+import type { GapType, Status, Tier, VerdictType } from '@/types/atlas'
 
 export const VERDICT_META: Record<VerdictType, { label: string; colorVar: string; bgVar: string }> = {
   READY: { label: 'Ready', colorVar: 'var(--verdict-ready)', bgVar: 'var(--verdict-ready-bg)' },
@@ -69,4 +69,17 @@ export function postDegreeHours(degreeCompletedOn: string | null, fullTimeHoursP
   if (completed > asOf) return 0
   const months = (asOf.getTime() - completed.getTime()) / (2629800 * 1000)
   return Math.round(months * fullTimeHoursPerMonth * 10) / 10
+}
+
+/**
+ * Gap Queue triage heuristic (spec §5.3's worked example doesn't reduce to
+ * a pure function of gap type — IELTS and GRE are both 'credential' but
+ * land at opposite ends). Endorsements and contacts front-load because
+ * they depend on other people's time; documents are agent-assisted;
+ * everything else scales with how many rows it actually unblocks.
+ */
+export function computeGapPriority(type: GapType, unblockCount: number): 'start_now' | 'agent_assisted' | 'low_priority' {
+  if (type === 'endorsement') return 'start_now'
+  if (type === 'document' || type === 'contact') return 'agent_assisted'
+  return unblockCount >= 3 ? 'start_now' : 'low_priority'
 }
