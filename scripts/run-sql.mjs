@@ -1,7 +1,7 @@
 // Runs a .sql file (or files) against DATABASE_URL directly.
 // Usage: node --env-file=.env.local scripts/run-sql.mjs supabase/migrations/000X_name.sql [...]
 import { readFileSync } from 'fs'
-import pg from 'pg'
+import { createPgClient } from './lib/pg-client.mjs'
 
 const files = process.argv.slice(2)
 if (files.length === 0) {
@@ -9,7 +9,7 @@ if (files.length === 0) {
   process.exit(1)
 }
 
-const client = new pg.Client({ connectionString: process.env.DATABASE_URL })
+const client = createPgClient()
 await client.connect()
 
 try {
