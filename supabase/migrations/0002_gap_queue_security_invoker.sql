@@ -1,0 +1,28 @@
+-- Atlas v2 — Phase 1 fix: gap_queue leaked through RLS
+--
+-- Confirmed empirically (not just from the dashboard's own flag): seeded one
+-- real row into profile_snapshots/opportunities/verdicts/gaps via the
+-- service-role key, then queried every table plus gap_queue with the
+-- publishable (anon) key. opportunities/verdicts/gaps correctly returned
+-- zero rows (RLS default-deny working as designed). gap_queue returned the
+-- row anyway.
+--
+-- Cause: a Postgres view runs with the view OWNER's privileges by default,
+-- not the querying role's. PostgREST executes `select * from gap_queue` as
+-- `anon`, but the view body (`select ... from gaps ...`) is evaluated as
+-- whoever owns the view — which isn't subject to gaps' RLS policies. The
+-- view exists specifically to read across `gaps` (spec §5.3's aggregation),
+-- so it silently routes around the default-deny model entirely, for any
+-- holder of the publishable key.
+--
+-- Fix (Postgres 15+): security_invoker makes the view evaluate as the
+-- querying role instead of its owner, so it inherits gaps' RLS like a
+-- direct query would. supabaseAdmin (service_role) is unaffected — Supabase
+-- grants service_role BYPASSRLS regardless of security_invoker, so
+-- server-side Gap Queue reads keep working exactly as before.
+--
+-- This is the only view in the schema (confirmed by grepping the 0001
+-- migration for `create view` — one match) so no other view needs the
+-- same audit.
+
+alter view gap_queue set (security_invoker = true);
