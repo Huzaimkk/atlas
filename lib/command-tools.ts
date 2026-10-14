@@ -196,7 +196,16 @@ export async function executeWriteTool(name: ToolName, input: Record<string, unk
     }
     case 'add_opportunity_from_search': {
       const query = String(input.query ?? '')
-      const searchRes = await fetch(`${process.env.NEXT_PUBLIC_APP_URL ?? 'http://localhost:3000'}/api/search`, {
+      // VERCEL_URL/VERCEL_PROJECT_PRODUCTION_URL are set automatically by
+      // Vercel at runtime — no manual env var needed there. The explicit
+      // NEXT_PUBLIC_APP_URL override and localhost fallback are only for
+      // environments Vercel doesn't label (local dev, other hosts).
+      const appUrl =
+        process.env.NEXT_PUBLIC_APP_URL ??
+        (process.env.VERCEL_PROJECT_PRODUCTION_URL && `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}`) ??
+        (process.env.VERCEL_URL && `https://${process.env.VERCEL_URL}`) ??
+        'http://localhost:3000'
+      const searchRes = await fetch(`${appUrl}/api/search`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ query }),
