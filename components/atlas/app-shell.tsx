@@ -1,7 +1,8 @@
 'use client'
 
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import {
+  Home as HomeIcon,
   ListChecks,
   Target,
   Database,
@@ -10,6 +11,7 @@ import {
   UserCircle,
   Archive as ArchiveIcon,
   FlaskConical,
+  AlertTriangle,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Switch } from '@/components/ui/switch'
@@ -23,7 +25,9 @@ import {
   mockArchive,
 } from '@/data/mock/atlas-mock'
 import type { AtlasData } from '@/lib/fetch-atlas-data'
+import { daysUntil } from '@/lib/atlas-format'
 import { CommandBar } from '@/components/atlas/command-bar'
+import { HomeView } from '@/components/views/home'
 import { ActionQueueView } from '@/components/views/action-queue'
 import { GapQueueView } from '@/components/views/gap-queue'
 import { PoolView } from '@/components/views/pool'
@@ -33,6 +37,7 @@ import { ProfileView } from '@/components/views/profile'
 import { ArchiveView } from '@/components/views/archive'
 
 const VIEWS = [
+  { id: 'home', label: 'Home', icon: HomeIcon },
   { id: 'action-queue', label: 'Action Queue', icon: ListChecks },
   { id: 'gap-queue', label: 'Gap Queue', icon: Target },
   { id: 'pool', label: 'Pool', icon: Database },
@@ -44,6 +49,8 @@ const VIEWS = [
 
 type ViewId = (typeof VIEWS)[number]['id']
 
+const URGENT_DAYS = 14
+
 const EMPTY: AtlasData = { opportunities: [], verdicts: [], gaps: [], watchlist: [], inbox: [], profile: null, archive: [] }
 
 /**
@@ -53,7 +60,7 @@ const EMPTY: AtlasData = { opportunities: [], verdicts: [], gaps: [], watchlist:
  * off, so the real pool is what's shown by default.
  */
 export function AppShell({ realData }: { realData?: AtlasData }) {
-  const [active, setActive] = useState<ViewId>('action-queue')
+  const [active, setActive] = useState<ViewId>('home')
   const [preview, setPreview] = useState(false)
 
   const live = realData ?? EMPTY
@@ -64,6 +71,24 @@ export function AppShell({ realData }: { realData?: AtlasData }) {
   const inbox = preview ? mockInbox : live.inbox
   const archive = preview ? mockArchive : live.archive
   const profile = preview ? mockProfile : live.profile
+
+  // Deadline alerting (Phase D): a row inside 14 days surfaces hard —
+  // Knight-Hennessy closed while sitting in the pool with nothing warning
+  // about it. LATE_WINDOW rows count regardless of their raw day count
+  // (their whole point is a deadline that's already technically passed);
+  // every other row needs a real, non-negative day count inside the
+  // window. EXPIRED/BLOCKED/IRRELEVANT are excluded — nothing to act on.
+  const urgent = useMemo(() => {
+    const verdictById = new Map(verdicts.map((v) => [v.opportunity_id, v]))
+    return opportunities
+      .map((o) => ({ opp: o, verdict: verdictById.get(o.id), days: daysUntil(o.deadline) }))
+      .filter(({ verdict, days }) => {
+        if (!verdict || !['READY', 'GAP', 'LATE_WINDOW'].includes(verdict.type)) return false
+        if (verdict.type === 'LATE_WINDOW') return true
+        return days !== null && days >= 0 && days <= URGENT_DAYS
+      })
+      .sort((a, b) => (a.days ?? 0) - (b.days ?? 0))
+  }, [opportunities, verdicts])
 
   return (
     <div className="flex h-screen w-full overflow-hidden">
@@ -95,7 +120,12 @@ export function AppShell({ realData }: { realData?: AtlasData }) {
                 )}
               >
                 <Icon className="size-4" strokeWidth={1.75} />
-                {view.label}
+                <span className="flex-1">{view.label}</span>
+                {view.id === 'action-queue' && urgent.length > 0 && (
+                  <span className="flex size-5 shrink-0 items-center justify-center rounded-full bg-verdict-late text-2xs font-semibold text-white">
+                    {urgent.length}
+                  </span>
+                )}
               </button>
             )
           })}
@@ -111,7 +141,23 @@ export function AppShell({ realData }: { realData?: AtlasData }) {
       </aside>
 
       <main className="flex-1 overflow-y-auto">
+        {urgent.length > 0 && (
+          <div className="sticky top-0 z-10 flex items-center gap-2 border-b border-verdict-late/30 bg-verdict-late-bg px-8 py-2 text-xs text-verdict-late">
+            <AlertTriangle className="size-3.5 shrink-0" strokeWidth={1.75} />
+            <span className="font-medium">
+              {urgent.length} row{urgent.length === 1 ? '' : 's'} inside {URGENT_DAYS} days:
+            </span>
+            <span className="truncate">
+              {urgent
+                .slice(0, 3)
+                .map((u) => (u.verdict?.type === 'LATE_WINDOW' ? `${u.opp.title} (late window)` : `${u.opp.title} (${u.days}d)`))
+                .join(' · ')}
+              {urgent.length > 3 ? ` · +${urgent.length - 3} more` : ''}
+            </span>
+          </div>
+        )}
         <div className="mx-auto max-w-6xl px-8 py-8">
+          {active === 'home' && <HomeView profile={profile} opportunities={opportunities} verdicts={verdicts} />}
           {active === 'action-queue' && <ActionQueueView opportunities={opportunities} verdicts={verdicts} />}
           {active === 'gap-queue' && <GapQueueView gaps={gaps} />}
           {active === 'pool' && <PoolView opportunities={opportunities} verdicts={verdicts} />}

@@ -73,6 +73,8 @@ export function formatFunding(stipend?: { amount: number; currency: string; peri
   return `${stipend.currency} ${stipend.amount.toLocaleString()}/${stipend.period}`
 }
 
+const AVG_MONTH_SECONDS = 2629800
+
 /**
  * Mirrors the post_degree_hours() SQL function (supabase/migrations/0001)
  * for client-side display — same average-month approximation, evaluated
@@ -83,8 +85,22 @@ export function postDegreeHours(degreeCompletedOn: string | null, fullTimeHoursP
   if (!degreeCompletedOn) return 0
   const completed = new Date(degreeCompletedOn + 'T00:00:00')
   if (completed > asOf) return 0
-  const months = (asOf.getTime() - completed.getTime()) / (2629800 * 1000)
+  const months = (asOf.getTime() - completed.getTime()) / (AVG_MONTH_SECONDS * 1000)
   return Math.round(months * fullTimeHoursPerMonth * 10) / 10
+}
+
+/**
+ * The date the linear hours-accrual model (above) crosses a given
+ * threshold — anchored at degree_completed_on, same model, so it can't
+ * drift from whatever postDegreeHours() currently reports. Returns null
+ * only when there's no completion date or no accrual rate to project
+ * from (never a guessed date).
+ */
+export function projectedCrossingDate(degreeCompletedOn: string | null, fullTimeHoursPerMonth: number, thresholdHours: number): Date | null {
+  if (!degreeCompletedOn || fullTimeHoursPerMonth <= 0) return null
+  const completed = new Date(degreeCompletedOn + 'T00:00:00')
+  const monthsToThreshold = thresholdHours / fullTimeHoursPerMonth
+  return new Date(completed.getTime() + monthsToThreshold * AVG_MONTH_SECONDS * 1000)
 }
 
 /**
