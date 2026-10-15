@@ -23,11 +23,12 @@ export interface AtlasData {
 
 /** Server-only real data read. RLS denies the anon key on every table by design (Phase 1) — this must run server-side using the service-role client, never in a client component. */
 export async function fetchAtlasData(): Promise<AtlasData> {
-  const [{ data: opportunities }, { data: verdicts }, { data: gapQueue }, { data: profile }] = await Promise.all([
+  const [{ data: opportunities }, { data: verdicts }, { data: gapQueue }, { data: profile }, { data: inboxRows }] = await Promise.all([
     supabaseAdmin.from('opportunities').select('*'),
     supabaseAdmin.from('verdicts').select('*'),
     supabaseAdmin.from('gap_queue').select('*'),
     supabaseAdmin.from('profile_snapshots').select('*').eq('is_current', true).maybeSingle(),
+    supabaseAdmin.from('inbox_leads').select('*').neq('confidence', 'resolved').order('dropped_at', { ascending: false }),
   ])
 
   const gaps: AggregatedGap[] = (gapQueue ?? []).map((g) => ({
@@ -56,7 +57,18 @@ export async function fetchAtlasData(): Promise<AtlasData> {
     verdicts: verdicts ?? [],
     gaps,
     watchlist: [], // Channel C (Phase 6) not built yet
-    inbox: [], // manual ingest pipeline (Phase beyond this session) not built yet
+    inbox: (inboxRows ?? []).map((r) => ({
+      id: r.id,
+      origin: r.origin,
+      raw_excerpt: r.raw_excerpt,
+      extracted: r.extracted ?? {},
+      confidence: r.confidence,
+      dropped_at: r.dropped_at,
+      dedupe_match_id: r.dedupe_match_id ?? undefined,
+      source_url: r.source_url ?? undefined,
+      extraction_error: r.extraction_error ?? undefined,
+      verdict_preview: r.verdict_preview ?? undefined,
+    })),
     profile: profile ?? null,
     archive,
   }

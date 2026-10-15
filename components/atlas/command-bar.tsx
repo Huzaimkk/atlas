@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { useRouter } from 'next/navigation'
 import { motion, AnimatePresence } from 'motion/react'
 import {
   Command,
@@ -164,6 +165,7 @@ function renderResult(tool: ToolName, result: unknown): React.ReactNode {
 }
 
 export function CommandBar() {
+  const router = useRouter()
   const [open, setOpen] = useState(false)
   const [historyOpen, setHistoryOpen] = useState(false)
   const [history, setHistory] = useState<{ id: string; prompt: string; status: string; actions: unknown[]; created_at: string }[]>([])
@@ -270,6 +272,7 @@ export function CommandBar() {
         )
       )
       setStep('result')
+      if (approve) router.refresh()
     } finally {
       setBusy(false)
     }
@@ -327,6 +330,7 @@ export function CommandBar() {
             : turn
         )
       )
+      if (approve) router.refresh()
     } finally {
       setBusy(false)
     }

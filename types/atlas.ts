@@ -34,7 +34,11 @@ export type Tier = 'T1' | 'T2' | 'T3'
 
 export type SourceType = 'official' | 'aggregator' | 'social' | 'manual'
 
-export type VerificationLevel = 'verified' | 'pattern' | 'conflicting'
+// 'unverified' added by migration 0003 (command bar's add_opportunity_from_search
+// and Channel B both insert rows at this level) — the DB CHECK constraint
+// was updated there; this type previously wasn't, so inserts using it
+// outside of untyped object literals silently escaped the type checker.
+export type VerificationLevel = 'verified' | 'pattern' | 'conflicting' | 'unverified'
 
 export type Origin = 'screenshot' | 'pdf' | 'txt' | 'search' | 'manual'
 
@@ -258,6 +262,10 @@ export interface InboxLead {
   confidence: LeadConfidence
   dropped_at: string
   dedupe_match_id?: string
+  source_url?: string
+  extraction_error?: string
+  /** The verdict computed against the profile at extraction time — shown before the user confirms, and kept as-is afterward rather than silently recomputed. */
+  verdict_preview?: { type: VerdictType; reason?: string; fit_score?: number | null; gaps?: OpportunityGap[] }
 }
 
 // ---- Archive ---------------------------------------------------------------
