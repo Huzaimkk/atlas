@@ -80,6 +80,7 @@ export type RequirementType =
   | 'writing_sample'
   | 'gre'
   | 'language_test'
+  | 'aptitude_test' // e.g. HEC's HAT — distinct from language_test/gre, a specific national exam
   | 'cv'
   | 'portfolio'
   | 'other'
@@ -205,6 +206,11 @@ export interface ProfileSnapshot {
     // Master's and PhD tracks run in parallel and both must surface
     // (profile v5 §1) — never collapsed to a single target.
     target_degree_levels: string[]
+    // Explicit, self-attested fact (not derived from current_degree_level
+    // by guessing) — HEC's own PhD-scholarship gate is stated in these
+    // terms directly ("17/18 years Masters/MS/MPhil"), so the engine needs
+    // the real number rather than inferring it from a free-text label.
+    years_of_education: number
   }
   credentials: {
     degrees: { name: string; institution: string; date: string; cgpa?: string }[]

@@ -1,7 +1,7 @@
 import 'server-only'
 import { supabaseAdmin } from '@/lib/supabase'
 import { extractFingerprintKeywords, overlapScore, type FingerprintKeywords } from '@/lib/fingerprint'
-import type { EligibilityRule, GapType, Opportunity, ProfileSnapshot, VerdictType } from '@/types/atlas'
+import type { EligibilityRule, GapType, Opportunity, ProfileSnapshot, RequirementType, VerdictType } from '@/types/atlas'
 
 // Same engine Phase 4's one-off script used, promoted to a reusable module
 // so both single-opportunity diagnosis (manual entry, item C) and full-pool
@@ -20,6 +20,7 @@ export type EligibilityCheck =
   | { kind: 'no_completed_degree_required'; value: true }
   | { kind: 'current_phd_student_required'; value: true }
   | { kind: 'work_auth_countries'; value: string[] }
+  | { kind: 'years_of_education_min'; value: number }
 
 const GAP_TYPE_DEFAULTS: Record<GapType, { time_estimate: string; cost_estimate: string }> = {
   credential: { time_estimate: 'weeks to months', cost_estimate: 'costs money' },
@@ -28,6 +29,20 @@ const GAP_TYPE_DEFAULTS: Record<GapType, { time_estimate: string; cost_estimate:
   record: { time_estimate: 'months, sometimes not closable before deadline', cost_estimate: 'varies' },
   experience: { time_estimate: 'months', cost_estimate: 'varies' },
   contact: { time_estimate: 'days — highest leverage per hour spent', cost_estimate: 'free' },
+}
+
+// An unsatisfied requirement's own .type decides what kind of gap it
+// becomes — a letter of recommendation depends on someone else's time
+// (endorsement), an exam score is a credential, a document an agent can
+// draft is... a document. Previously every requirement produced type:
+// 'document' regardless, which is how a HAT score (an exam, unblock-count
+// aggregated under the wrong bucket) would've landed in the Gap Queue
+// mislabeled and mis-prioritized next to things an agent can draft.
+const REQUIREMENT_GAP_TYPE: Partial<Record<RequirementType, GapType>> = {
+  lor: 'endorsement',
+  gre: 'credential',
+  language_test: 'credential',
+  aptitude_test: 'credential',
 }
 
 // Schema doesn't (yet) carry a "late applications accepted" flag on
@@ -41,6 +56,7 @@ export interface ProfileFacts {
   isCurrentlyUndergradEnrolled: boolean
   isCurrentPhdStudent: boolean
   postDegreeHours: number
+  yearsOfEducation: number
   fingerprintKeywords: FingerprintKeywords
 }
 
@@ -52,6 +68,7 @@ export async function loadProfileFacts(snapshot: ProfileSnapshot & { id: string 
     isCurrentlyUndergradEnrolled: false, // no field in the schema for "currently enrolled" distinct from "highest degree" yet
     isCurrentPhdStudent: false,
     postDegreeHours: postDegreeHours ?? 0,
+    yearsOfEducation: snapshot.identity.years_of_education,
     fingerprintKeywords: extractFingerprintKeywords(snapshot.research_fingerprint),
   }
 }
@@ -73,6 +90,10 @@ function evalMechanicalCheck(check: EligibilityCheck | undefined, facts: Profile
       return check.value.includes(facts.citizenship)
         ? { pass: true }
         : { pass: false, detail: `citizenship is ${facts.citizenship}, not in [${check.value.join(', ')}], and no work authorization recorded` }
+    case 'years_of_education_min':
+      return facts.yearsOfEducation >= check.value
+        ? { pass: true }
+        : { pass: false, detail: `has ${facts.yearsOfEducation} years of education, needs ${check.value}` }
   }
 }
 
@@ -129,7 +150,7 @@ export function diagnoseOne(opp: Opportunity, facts: ProfileFacts): DiagnosisRes
 
   const gaps: { type: GapType; label: string }[] = []
   for (const req of opp.requirements ?? []) {
-    if (!req.satisfied) gaps.push({ type: 'document', label: req.label })
+    if (!req.satisfied) gaps.push({ type: REQUIREMENT_GAP_TYPE[req.type] ?? 'document', label: req.label })
   }
   const acceptsBachelor = (opp.degree_levels_accepted ?? []).length === 0 || opp.degree_levels_accepted.includes('undergraduate')
   if (!acceptsBachelor) {

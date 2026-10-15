@@ -481,6 +481,7 @@ export const mockProfile: ProfileSnapshot = {
     term_flexibility: 'any',
     geography: 'any',
     target_degree_levels: ['masters', 'phd'],
+    years_of_education: 16,
   },
   credentials: {
     degrees: [{ name: 'BS Computer Science', institution: 'FAST-NUCES', date: '2027 (expected)', cgpa: '3.8/4.0' }],
