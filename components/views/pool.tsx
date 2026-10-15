@@ -55,7 +55,7 @@ export function PoolView({ opportunities, verdicts }: { opportunities: Opportuni
   const [sortKey, setSortKey] = useState<SortKey>('deadline')
   const [collapsed, setCollapsed] = useState<Set<SectionId>>(new Set())
 
-  const verdictById = new Map(verdicts.map((v) => [v.opportunity_id, v]))
+  const verdictById = useMemo(() => new Map(verdicts.map((v) => [v.opportunity_id, v])), [verdicts])
 
   const filtered = useMemo(() => {
     let rows = opportunities

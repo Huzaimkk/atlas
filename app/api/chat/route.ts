@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { SYSTEM_PROMPTS } from '@/lib/profile'
 import { supabaseAdmin } from '@/lib/supabase'
-import { TOOL_DEFS, WRITE_TOOLS, executeReadTool, executeWriteTool, type ToolName } from '@/lib/command-tools'
+import { TOOL_DEFS, WRITE_TOOLS, executeReadTool, executeWriteTool, humanizeWriteAction, type ToolName } from '@/lib/command-tools'
 
 // Node.js runtime (Fluid Compute) — dropped the old `edge` export. Nothing
 // here needs Edge, and the command-bar path makes several sequential
@@ -41,19 +41,6 @@ async function callCometAPI(messages: unknown[], tools?: unknown[]) {
   })
   if (!res.ok) throw new Error(`CometAPI error: ${res.status} — ${await res.text()}`)
   return res.json()
-}
-
-function humanizeWriteAction(tool: ToolName, input: Record<string, unknown>): string {
-  switch (tool) {
-    case 'mark_requirement_satisfied':
-      return `Mark "${input.requirement_label}" satisfied for "${input.opportunity_title}", then re-diagnose that row.`
-    case 'update_profile_credential':
-      return `Record "${input.item}" as ${input.status}${input.score_or_detail ? ` (${input.score_or_detail})` : ''} — creates profile snapshot v(next) and re-diagnoses the whole pool.`
-    case 'add_opportunity_from_search':
-      return `Search the web for "${input.query}" and, only if a real source is found, add it as an unverified lead.`
-    default:
-      return `Run ${tool} with ${JSON.stringify(input)}`
-  }
 }
 
 export async function GET() {
