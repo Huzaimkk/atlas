@@ -36,8 +36,8 @@ export async function fetchAtlasData(): Promise<AtlasData> {
     label: g.label,
     unblock_count: g.unblock_count,
     opportunity_ids: g.opportunity_ids,
-    time_estimate: '', // §5.2 guidance lives on individual gaps rows, not this aggregate view
-    cost_estimate: '',
+    time_estimate: g.time_estimate ?? '',
+    cost_estimate: g.cost_estimate ?? '',
     priority: computeGapPriority(g.type, g.unblock_count),
   }))
 

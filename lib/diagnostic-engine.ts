@@ -1,5 +1,6 @@
 import 'server-only'
 import { supabaseAdmin } from '@/lib/supabase'
+import { extractFingerprintKeywords, overlapScore, type FingerprintKeywords } from '@/lib/fingerprint'
 import type { EligibilityRule, GapType, Opportunity, ProfileSnapshot, VerdictType } from '@/types/atlas'
 
 // Same engine Phase 4's one-off script used, promoted to a reusable module
@@ -40,7 +41,7 @@ export interface ProfileFacts {
   isCurrentlyUndergradEnrolled: boolean
   isCurrentPhdStudent: boolean
   postDegreeHours: number
-  researchFingerprint: string[]
+  fingerprintKeywords: FingerprintKeywords
 }
 
 export async function loadProfileFacts(snapshot: ProfileSnapshot & { id: string }): Promise<ProfileFacts> {
@@ -51,7 +52,7 @@ export async function loadProfileFacts(snapshot: ProfileSnapshot & { id: string 
     isCurrentlyUndergradEnrolled: false, // no field in the schema for "currently enrolled" distinct from "highest degree" yet
     isCurrentPhdStudent: false,
     postDegreeHours: postDegreeHours ?? 0,
-    researchFingerprint: snapshot.research_fingerprint.map((s) => s.toLowerCase()),
+    fingerprintKeywords: extractFingerprintKeywords(snapshot.research_fingerprint),
   }
 }
 
@@ -75,10 +76,17 @@ function evalMechanicalCheck(check: EligibilityCheck | undefined, facts: Profile
   }
 }
 
-function fitScore(fieldTags: string[] | undefined, researchFingerprint: string[]): number | null {
+// Word/bigram overlap against the fingerprint (lib/fingerprint), not whole-
+// phrase substring containment. The old version checked whether a tag like
+// "AI safety" was a substring of (or contained) a fingerprint phrase —
+// which never matches multi-concept phrases like "LLMs and agentic AI
+// automation (...)", so it silently returned 0 for every tag, including
+// genuinely overlapping ones, while never distinguishing a real match from
+// an irrelevant one. overlapScore() scores what fraction of the tag text's
+// own meaningful words the fingerprint actually recognizes.
+function fitScore(fieldTags: string[] | undefined, keywords: FingerprintKeywords): number | null {
   if (!fieldTags?.length) return null
-  const hits = fieldTags.filter((tag) => researchFingerprint.some((fp) => fp.includes(tag.toLowerCase()) || tag.toLowerCase().includes(fp)))
-  return Math.round((hits.length / fieldTags.length) * 100)
+  return overlapScore(fieldTags.join(' '), keywords)
 }
 
 export interface DiagnosisResult {
@@ -116,7 +124,7 @@ export function diagnoseOne(opp: Opportunity, facts: ProfileFacts): DiagnosisRes
   }
 
   if (opp.status === 'not_yet_open') {
-    return { type: 'NOT_YET_OPEN', fit_score: fitScore(opp.field_tags, facts.researchFingerprint), gaps: [] }
+    return { type: 'NOT_YET_OPEN', fit_score: fitScore(opp.field_tags, facts.fingerprintKeywords), gaps: [] }
   }
 
   const gaps: { type: GapType; label: string }[] = []
@@ -125,15 +133,21 @@ export function diagnoseOne(opp: Opportunity, facts: ProfileFacts): DiagnosisRes
   }
   const acceptsBachelor = (opp.degree_levels_accepted ?? []).length === 0 || opp.degree_levels_accepted.includes('undergraduate')
   if (!acceptsBachelor) {
-    gaps.push({ type: 'record', label: 'Verify entry route — degree_level_required not confirmed to admit bachelor\'s-only applicants (v5 §5.1: GAP, never BLOCKED, on ambiguity)' })
+    // Ambiguity, not a confirmed rejection (v5 §5.1) — never BLOCKED, and
+    // never surfaced with the spec citation that justifies that rule;
+    // the user just needs a plain action.
+    gaps.push({ type: 'record', label: "Confirm this programme accepts bachelor's-only applicants — not stated on the official page" })
   }
   for (const rule of opp.eligibility_rules ?? []) {
-    if (rule.rule_type === 'discretionary') gaps.push({ type: 'record', label: `Discretionary requirement to address: ${rule.rule_text}` })
+    // rule_text is already written as a plain-English condition (e.g.
+    // "Typically requires a 2:1 undergraduate degree; IELTS typically
+    // 6.0.") — it IS the action item, no internal framing needed on top.
+    if (rule.rule_type === 'discretionary') gaps.push({ type: 'record', label: rule.rule_text })
   }
 
   return {
     type: gaps.length > 0 ? 'GAP' : 'READY',
-    fit_score: fitScore(opp.field_tags, facts.researchFingerprint),
+    fit_score: fitScore(opp.field_tags, facts.fingerprintKeywords),
     gaps,
   }
 }

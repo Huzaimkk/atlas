@@ -38,6 +38,22 @@ export function daysUntil(dateStr?: string): number | null {
   return Math.round((target.getTime() - now.getTime()) / 86_400_000)
 }
 
+/**
+ * Action Queue urgency band (lower = more urgent) — primary sort key for
+ * dated rows, so a programme closing in 3 days never sits below one
+ * closing in 90 just because the comparison used raw fit_score or
+ * day-count first. 0: inside two weeks. 1: inside a month. 2: inside a
+ * quarter. 3: everything further out (or already past, defensively).
+ */
+export function urgencyBand(dateStr?: string): number {
+  const d = daysUntil(dateStr)
+  if (d === null) return 3
+  if (d <= 14) return 0
+  if (d <= 30) return 1
+  if (d <= 90) return 2
+  return 3
+}
+
 export function formatDeadline(dateStr?: string): string {
   if (!dateStr) return '—'
   const n = daysUntil(dateStr)
