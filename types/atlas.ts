@@ -28,7 +28,11 @@ export const CATEGORY_LABELS: Record<Category, string> = {
   9: 'Pattern-based annual cycles',
 }
 
-export type Status = 'not_yet_open' | 'open' | 'closing_soon' | 'expired' | 'rolling'
+// 'paused': temporarily suspended (e.g. a programme whose current-year
+// round was pulled), distinct from 'expired' (a fixed past deadline).
+// 'program_specific': background/reference material, no open call right
+// now — combined with a null deadline, routes to Pool's Reference section.
+export type Status = 'not_yet_open' | 'open' | 'closing_soon' | 'expired' | 'rolling' | 'paused' | 'program_specific'
 
 export type Tier = 'T1' | 'T2' | 'T3'
 
@@ -125,6 +129,15 @@ export interface Opportunity {
   verification_level: VerificationLevel
   scam_risk?: boolean
   origin: Origin
+  // Bulk research-file import (Opportunity_Research_EU_USA_UAE.xlsx, Oct
+  // 2026) — see supabase/migrations/0009.
+  external_id?: string
+  /** The source file's own "CV fit" + justification text — reference only, never our fit_score. */
+  source_assessment?: string
+  /** Must surface before drafting anything for this row — some programmes prohibit AI drafting entirely. */
+  ai_writing_policy?: string
+  /** A matching row from the source file's Corrections sheet, applied as an override annotation, not a new row. */
+  verified_correction?: string
 }
 
 export type VerdictType =

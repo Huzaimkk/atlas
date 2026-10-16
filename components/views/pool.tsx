@@ -1,11 +1,11 @@
 'use client'
 
 import { useMemo, useState } from 'react'
-import { ArrowUpDown, ChevronDown, ChevronRight, Database, Search } from 'lucide-react'
+import { ArrowUpDown, ChevronDown, ChevronRight, Database, Search, PenOff } from 'lucide-react'
 import { CATEGORY_LABELS, type Opportunity, type Tier, type Verdict, type VerdictType } from '@/types/atlas'
 import { EmptyState } from '@/components/atlas/empty-state'
 import { VerdictBadge, TierBadge } from '@/components/atlas/verdict-badge'
-import { formatDeadline, STATUS_LABELS } from '@/lib/atlas-format'
+import { formatDeadline, STATUS_LABELS, hasAiWritingPolicy } from '@/lib/atlas-format'
 import { cn } from '@/lib/utils'
 import { Input } from '@/components/ui/input'
 import {
@@ -25,26 +25,31 @@ import {
 } from '@/components/ui/table'
 
 type SortKey = 'title' | 'deadline' | 'tier'
-type SectionId = 'live' | 'upcoming' | 'past'
+type SectionId = 'live' | 'upcoming' | 'reference' | 'past'
 
 const SECTIONS: { id: SectionId; label: string; description: string }[] = [
   { id: 'live', label: 'Live', description: 'Open, closing soon, or in a late-application window' },
   { id: 'upcoming', label: 'Upcoming', description: 'Not yet open' },
+  { id: 'reference', label: 'Reference', description: 'Background material, no specific call or deadline — not an action' },
   { id: 'past', label: 'Past', description: 'Expired, blocked, or marked irrelevant — kept visible, not deleted' },
 ]
 
 /**
  * Nothing disappears (spec instruction, same principle as BLOCKED rows) —
- * every row lands in exactly one of these three sections, never dropped.
+ * every row lands in exactly one of these four sections, never dropped.
  * Verdict type takes priority over raw status: a BLOCKED or IRRELEVANT row
  * is "closed off" to the user regardless of the opportunity's own open/
  * closing_soon status, and a LATE_WINDOW row is still actionable even
- * though its underlying status is 'expired'.
+ * though its underlying status is 'expired'. 'program_specific' with no
+ * deadline is background, not an action (bulk-import instruction) — it
+ * only overrides a stronger "closed off" or "late window" signal, never
+ * the other way around.
  */
 function sectionFor(opp: Opportunity, verdict: Verdict | undefined): SectionId {
   if (verdict?.type === 'LATE_WINDOW') return 'live'
   if (verdict?.type === 'BLOCKED' || verdict?.type === 'IRRELEVANT') return 'past'
-  if (opp.status === 'expired') return 'past'
+  if (opp.status === 'expired' || opp.status === 'paused') return 'past'
+  if (opp.status === 'program_specific' && !opp.deadline) return 'reference'
   if (opp.status === 'not_yet_open') return 'upcoming'
   return 'live'
 }
@@ -79,7 +84,7 @@ export function PoolView({ opportunities, verdicts }: { opportunities: Opportuni
   }, [opportunities, tierFilter, query, sortKey])
 
   const bySection = useMemo(() => {
-    const groups: Record<SectionId, Opportunity[]> = { live: [], upcoming: [], past: [] }
+    const groups: Record<SectionId, Opportunity[]> = { live: [], upcoming: [], reference: [], past: [] }
     for (const o of filtered) groups[sectionFor(o, verdictById.get(o.id))].push(o)
     return groups
   }, [filtered, verdictById])
@@ -189,7 +194,16 @@ export function PoolView({ opportunities, verdicts }: { opportunities: Opportuni
                               const v = verdictById.get(o.id)
                               return (
                                 <TableRow key={o.id} className={cn(section.id === 'past' && 'opacity-70')}>
-                                  <TableCell className="font-medium text-foreground">{o.title}</TableCell>
+                                  <TableCell className="font-medium text-foreground">
+                                    <span className="flex items-center gap-1.5">
+                                      {o.title}
+                                      {hasAiWritingPolicy(o.ai_writing_policy) && (
+                                        <span title={o.ai_writing_policy}>
+                                          <PenOff className="size-3 shrink-0 text-verdict-late" strokeWidth={1.75} />
+                                        </span>
+                                      )}
+                                    </span>
+                                  </TableCell>
                                   <TableCell className="text-muted-foreground">{CATEGORY_LABELS[o.category]}</TableCell>
                                   <TableCell className="text-muted-foreground">{o.institution}</TableCell>
                                   <TableCell>

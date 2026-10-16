@@ -137,7 +137,7 @@ export function diagnoseOne(opp: Opportunity, facts: ProfileFacts): DiagnosisRes
     }
   }
 
-  if (opp.status === 'expired') {
+  if (opp.status === 'expired' || opp.status === 'paused') {
     if (LATE_WINDOW_TITLES.has(opp.title)) {
       return { type: 'LATE_WINDOW', reason: 'Late applications accepted — see the programme\'s own late-application route.', fit_score: null, gaps: [] }
     }

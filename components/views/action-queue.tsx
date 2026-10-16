@@ -1,11 +1,11 @@
 'use client'
 
 import { AnimatePresence, motion } from 'motion/react'
-import { ListChecks, ExternalLink, AlertTriangle } from 'lucide-react'
+import { ListChecks, ExternalLink, AlertTriangle, PenOff } from 'lucide-react'
 import type { Opportunity, Verdict } from '@/types/atlas'
 import { EmptyState } from '@/components/atlas/empty-state'
 import { VerdictBadge, TierBadge } from '@/components/atlas/verdict-badge'
-import { formatDeadline, formatFunding, urgencyBand } from '@/lib/atlas-format'
+import { formatDeadline, formatFunding, urgencyBand, hasAiWritingPolicy } from '@/lib/atlas-format'
 import { Button } from '@/components/ui/button'
 
 type Row = { verdict: Verdict; opp: Opportunity }
@@ -54,6 +54,12 @@ function RowItem({ verdict, opp }: Row) {
           {opp.supervisor ? ` · ${opp.supervisor.name}` : ''}
         </p>
         {verdict.type === 'LATE_WINDOW' && verdict.reason && <p className="text-xs text-verdict-late">{verdict.reason}</p>}
+        {hasAiWritingPolicy(opp.ai_writing_policy) && (
+          <p className="flex items-center gap-1 text-xs text-verdict-late" title={opp.ai_writing_policy}>
+            <PenOff className="size-3 shrink-0" strokeWidth={1.75} />
+            AI writing policy: {opp.ai_writing_policy}
+          </p>
+        )}
       </div>
       <div className="hidden shrink-0 text-right font-mono text-xs text-muted-foreground sm:block">
         {formatFunding(opp.funding?.stipend)}

@@ -22,6 +22,8 @@ export const STATUS_LABELS: Record<Status, string> = {
   closing_soon: 'Closing soon',
   expired: 'Expired',
   rolling: 'Rolling',
+  paused: 'Paused',
+  program_specific: 'Reference',
 }
 
 export const GAP_PRIORITY_LABELS: Record<'start_now' | 'agent_assisted' | 'low_priority', string> = {
@@ -96,6 +98,16 @@ export function postDegreeHours(degreeCompletedOn: string | null, fullTimeHoursP
  * only when there's no completion date or no accrual rate to project
  * from (never a guessed date).
  */
+/**
+ * Must surface before drafting anything for a row (bulk-import
+ * instruction) — 'not_checked' means the source file never established a
+ * policy either way, which is not the same as "no restriction confirmed",
+ * so it's treated as unknown, not clear.
+ */
+export function hasAiWritingPolicy(policy?: string): boolean {
+  return !!policy && policy !== 'not_checked'
+}
+
 export function projectedCrossingDate(degreeCompletedOn: string | null, fullTimeHoursPerMonth: number, thresholdHours: number): Date | null {
   if (!degreeCompletedOn || fullTimeHoursPerMonth <= 0) return null
   const completed = new Date(degreeCompletedOn + 'T00:00:00')
