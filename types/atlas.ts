@@ -181,6 +181,8 @@ export interface Verdict {
   gaps?: OpportunityGap[] // populated when type === 'GAP'
   fit_score?: number // 0-100, only meaningful once eligibility passes (spec §5.4)
   computed_at: string
+  /** First became READY, carried forward across re-diagnoses — unlike computed_at this does NOT reset every run. Null unless type === 'READY'. See migration 0010. */
+  ready_since?: string | null
 }
 
 /** Aggregated row for the Gap Queue (spec §5.3) — one per distinct gap across the whole pool. */
@@ -285,6 +287,53 @@ export interface InboxLead {
   extraction_error?: string
   /** The verdict computed against the profile at extraction time — shown before the user confirms, and kept as-is afterward rather than silently recomputed. */
   verdict_preview?: { type: VerdictType; reason?: string; fit_score?: number | null; gaps?: OpportunityGap[] }
+}
+
+// ---- Applications (spec §7 Phase 1 table, surfaced by the accountability UI) ----
+
+export type ApplicationStatus =
+  | 'not_started'
+  | 'researching'
+  | 'drafting'
+  | 'submitted'
+  | 'interview'
+  | 'offer'
+  | 'rejected'
+  | 'withdrawn'
+
+/** Terminal states — an application here is done moving, never "overdue." */
+export const APPLICATION_TERMINAL_STATUSES = new Set<ApplicationStatus>(['offer', 'rejected', 'withdrawn'])
+
+export interface ApplicationStatusEvent {
+  status: ApplicationStatus
+  at: string
+}
+
+/**
+ * One document-checklist line for an application — seeded from the
+ * opportunity's own `requirements` cross-referenced against the profile's
+ * document_inventory where a mapping exists (see lib/application-documents.ts),
+ * then independently toggleable per application rather than re-reading the
+ * profile live (an SOP can be "ready" in general but not yet tailored to a
+ * specific programme).
+ */
+export interface RequiredDocument {
+  type: RequirementType
+  label: string
+  satisfied: boolean
+  inventory_status?: 'ready' | 'draft' | 'missing'
+}
+
+export interface Application {
+  id: string
+  opportunity_id: string
+  status: ApplicationStatus
+  status_changed_at: string
+  status_history: ApplicationStatusEvent[]
+  required_documents: RequiredDocument[]
+  notes?: string
+  created_at: string
+  updated_at: string
 }
 
 // ---- Archive ---------------------------------------------------------------

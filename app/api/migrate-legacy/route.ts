@@ -31,12 +31,17 @@ function tierFromFitScore(fitScore: number): 'T1' | 'T2' | 'T3' {
   return 'T3'
 }
 
+// Migration 0010 replaced applications.stage (identified/preparing/
+// submitted/interview/decision) with the explicit status funnel
+// (not_started..offer/rejected/withdrawn). 'decision' (legacy: applied,
+// awaiting an outcome) maps to 'submitted', not a fabricated 'interview' —
+// the old data never recorded whether an interview actually happened.
 const STAGE_MAP = {
-  identified: 'identified',
-  emailed: 'preparing',
-  replied: 'preparing',
+  identified: 'not_started',
+  emailed: 'researching',
+  replied: 'drafting',
   applied: 'submitted',
-  decision: 'decision',
+  decision: 'submitted',
 } as const
 
 export async function POST(req: Request) {
@@ -82,9 +87,7 @@ export async function POST(req: Request) {
 
     const { error: appError } = await supabaseAdmin.from('applications').insert({
       opportunity_id: newId,
-      stage: STAGE_MAP[p.stage],
-      decision: p.stage === 'decision' ? 'pending' : null,
-      submitted_at: p.last_contacted ?? null,
+      status: STAGE_MAP[p.stage],
       notes: p.notes ?? null,
       migrated_legacy: true,
     })
@@ -134,7 +137,7 @@ export async function POST(req: Request) {
 
     const { error: appError } = await supabaseAdmin.from('applications').insert({
       opportunity_id: newId,
-      stage: d.applied ? 'submitted' : 'identified',
+      status: d.applied ? 'submitted' : 'not_started',
       notes: d.notes || d.round ? `${d.round ?? ''} ${d.notes ?? ''}`.trim() : null,
       migrated_legacy: true,
     })

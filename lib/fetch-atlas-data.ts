@@ -3,6 +3,7 @@ import { supabaseAdmin } from '@/lib/supabase'
 import { computeGapPriority } from '@/lib/atlas-format'
 import type {
   AggregatedGap,
+  Application,
   ArchiveEntry,
   InboxLead,
   Opportunity,
@@ -19,17 +20,20 @@ export interface AtlasData {
   inbox: InboxLead[]
   profile: ProfileSnapshot | null
   archive: ArchiveEntry[]
+  applications: Application[]
 }
 
 /** Server-only real data read. RLS denies the anon key on every table by design (Phase 1) — this must run server-side using the service-role client, never in a client component. */
 export async function fetchAtlasData(): Promise<AtlasData> {
-  const [{ data: opportunities }, { data: verdicts }, { data: gapQueue }, { data: profile }, { data: inboxRows }] = await Promise.all([
-    supabaseAdmin.from('opportunities').select('*'),
-    supabaseAdmin.from('verdicts').select('*'),
-    supabaseAdmin.from('gap_queue').select('*'),
-    supabaseAdmin.from('profile_snapshots').select('*').eq('is_current', true).maybeSingle(),
-    supabaseAdmin.from('inbox_leads').select('*').neq('confidence', 'resolved').order('dropped_at', { ascending: false }),
-  ])
+  const [{ data: opportunities }, { data: verdicts }, { data: gapQueue }, { data: profile }, { data: inboxRows }, { data: applications }] =
+    await Promise.all([
+      supabaseAdmin.from('opportunities').select('*'),
+      supabaseAdmin.from('verdicts').select('*'),
+      supabaseAdmin.from('gap_queue').select('*'),
+      supabaseAdmin.from('profile_snapshots').select('*').eq('is_current', true).maybeSingle(),
+      supabaseAdmin.from('inbox_leads').select('*').neq('confidence', 'resolved').order('dropped_at', { ascending: false }),
+      supabaseAdmin.from('applications').select('*'),
+    ])
 
   const gaps: AggregatedGap[] = (gapQueue ?? []).map((g) => ({
     id: `${g.type}:${g.label}`,
@@ -71,5 +75,6 @@ export async function fetchAtlasData(): Promise<AtlasData> {
     })),
     profile: profile ?? null,
     archive,
+    applications: applications ?? [],
   }
 }

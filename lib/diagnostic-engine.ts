@@ -45,6 +45,19 @@ const REQUIREMENT_GAP_TYPE: Partial<Record<RequirementType, GapType>> = {
   aptitude_test: 'credential',
 }
 
+/**
+ * ready_since (migration 0010): first-became-READY timestamp, carried
+ * forward across the delete+insert cycle both diagnose paths use. Resets to
+ * null the moment a row stops being READY, and to now() the moment it
+ * starts — never backdated, never guessed from computed_at (which resets on
+ * every run and would make every row look freshly-READY forever).
+ */
+function computeReadySince(prev: { type: VerdictType; ready_since: string | null } | undefined, newType: VerdictType): string | null {
+  if (newType !== 'READY') return null
+  if (prev?.type === 'READY' && prev.ready_since) return prev.ready_since
+  return new Date().toISOString()
+}
+
 // Schema doesn't (yet) carry a "late applications accepted" flag on
 // opportunities — narrow, documented special case rather than a generic
 // mechanism. Follow-up: opportunities.late_applications_accepted.
@@ -184,6 +197,14 @@ export async function diagnoseOpportunity(opportunityId: string) {
   const facts = await loadProfileFacts(snapshot)
   const result = diagnoseOne(opp as Opportunity, facts)
 
+  const { data: prevVerdict } = await supabaseAdmin
+    .from('verdicts')
+    .select('type, ready_since')
+    .eq('opportunity_id', opportunityId)
+    .eq('snapshot_version', snapshot.version)
+    .maybeSingle()
+  const ready_since = computeReadySince(prevVerdict ?? undefined, result.type)
+
   await supabaseAdmin.from('verdicts').delete().eq('opportunity_id', opportunityId).eq('snapshot_version', snapshot.version)
 
   const { data: verdict, error: verdictErr } = await supabaseAdmin
@@ -197,6 +218,7 @@ export async function diagnoseOpportunity(opportunityId: string) {
       blocking_rule_quote: result.blocking_rule_quote,
       blocking_rule_source_url: result.blocking_rule_source_url,
       fit_score: result.fit_score,
+      ready_since,
     })
     .select('*')
     .single()
@@ -234,6 +256,12 @@ export async function diagnosePool() {
 
   const diagnoses = (opportunities ?? []).map((opp) => ({ opp, result: diagnoseOne(opp as Opportunity, facts) }))
 
+  const { data: prevVerdicts } = await supabaseAdmin
+    .from('verdicts')
+    .select('opportunity_id, type, ready_since')
+    .eq('snapshot_version', snapshot.version)
+  const prevByOpp = new Map((prevVerdicts ?? []).map((v) => [v.opportunity_id, v]))
+
   // Deleting verdicts cascades to their gaps (gaps.verdict_id ON DELETE CASCADE).
   await supabaseAdmin.from('verdicts').delete().eq('snapshot_version', snapshot.version)
 
@@ -246,6 +274,7 @@ export async function diagnosePool() {
     blocking_rule_quote: result.blocking_rule_quote,
     blocking_rule_source_url: result.blocking_rule_source_url,
     fit_score: result.fit_score,
+    ready_since: computeReadySince(prevByOpp.get(opp.id), result.type),
   }))
   const { data: insertedVerdicts, error: verdictErr } = await supabaseAdmin.from('verdicts').insert(verdictRows).select('id, opportunity_id')
   if (verdictErr) throw new Error(`Verdict batch insert failed: ${verdictErr.message}`)

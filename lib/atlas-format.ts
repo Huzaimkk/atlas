@@ -1,4 +1,4 @@
-import type { GapType, Status, Tier, VerdictType } from '@/types/atlas'
+import type { ApplicationStatus, GapType, Status, Tier, VerdictType } from '@/types/atlas'
 
 export const VERDICT_META: Record<VerdictType, { label: string; colorVar: string; bgVar: string }> = {
   READY: { label: 'Ready', colorVar: 'var(--verdict-ready)', bgVar: 'var(--verdict-ready-bg)' },
@@ -26,6 +26,31 @@ export const STATUS_LABELS: Record<Status, string> = {
   program_specific: 'Reference',
 }
 
+export const APPLICATION_STATUS_LABELS: Record<ApplicationStatus, string> = {
+  not_started: 'Not started',
+  researching: 'Researching',
+  drafting: 'Drafting',
+  submitted: 'Submitted',
+  interview: 'Interview',
+  offer: 'Offer',
+  rejected: 'Rejected',
+  withdrawn: 'Withdrawn',
+}
+
+// Ordered left-to-right for the Applications status control — not the
+// alphabetical/CHECK-constraint order, the actual funnel order, with the
+// three terminal branches trailing.
+export const APPLICATION_STATUS_ORDER: ApplicationStatus[] = [
+  'not_started',
+  'researching',
+  'drafting',
+  'submitted',
+  'interview',
+  'offer',
+  'rejected',
+  'withdrawn',
+]
+
 export const GAP_PRIORITY_LABELS: Record<'start_now' | 'agent_assisted' | 'low_priority', string> = {
   start_now: 'Start now',
   agent_assisted: 'Agent-assisted',
@@ -38,6 +63,13 @@ export function daysUntil(dateStr?: string): number | null {
   const now = new Date()
   now.setHours(0, 0, 0, 0)
   return Math.round((target.getTime() - now.getTime()) / 86_400_000)
+}
+
+/** Inverse of daysUntil — how long ago a date (or timestamp, truncated to its date) was. Used for "READY for N days" / "unchanged for N days" aging, never for deadlines (those stay daysUntil). */
+export function daysSince(dateStr?: string | null): number | null {
+  if (!dateStr) return null
+  const d = daysUntil(dateStr.slice(0, 10))
+  return d === null ? null : -d
 }
 
 /**

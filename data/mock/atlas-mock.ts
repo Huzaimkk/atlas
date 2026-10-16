@@ -8,6 +8,7 @@
 
 import type {
   AggregatedGap,
+  Application,
   ArchiveEntry,
   InboxLead,
   Opportunity,
@@ -300,7 +301,7 @@ export const mockOpportunities: Opportunity[] = [
 
 export const mockVerdicts: Verdict[] = [
   { opportunity_id: 'mats-winter-2027', type: 'LATE_WINDOW', snapshot_version: 3, computed_at: '2026-09-15', reason: 'Late applications accepted by emailing applications@matsprogram.org' },
-  { opportunity_id: 'mats-residency', type: 'READY', snapshot_version: 3, computed_at: '2026-09-15', fit_score: 91 },
+  { opportunity_id: 'mats-residency', type: 'READY', snapshot_version: 3, computed_at: '2026-09-15', fit_score: 91, ready_since: '2026-09-30' },
   {
     opportunity_id: 'gates-cambridge',
     type: 'GAP',
@@ -518,3 +519,39 @@ export const mockProfile: ProfileSnapshot = {
   degree_completed_on: null,
   full_time_hours_per_month: 173.33,
 }
+
+export const mockApplications: Application[] = [
+  {
+    id: 'app-gates-cambridge',
+    opportunity_id: 'gates-cambridge',
+    status: 'drafting',
+    status_changed_at: '2026-09-27',
+    status_history: [
+      { status: 'researching', at: '2026-09-10' },
+      { status: 'drafting', at: '2026-09-27' },
+    ],
+    required_documents: [
+      { type: 'sop', label: 'Statement of purpose', satisfied: false, inventory_status: 'draft' },
+      { type: 'lor', label: '2× letters of recommendation', satisfied: false, inventory_status: 'missing' },
+      { type: 'transcript', label: 'Transcripts', satisfied: true, inventory_status: 'ready' },
+    ],
+    created_at: '2026-09-10',
+    updated_at: '2026-09-27',
+  },
+  {
+    id: 'app-mats-winter-2027',
+    opportunity_id: 'mats-winter-2027',
+    status: 'submitted',
+    status_changed_at: '2026-10-12',
+    status_history: [
+      { status: 'drafting', at: '2026-09-01' },
+      { status: 'submitted', at: '2026-10-12' },
+    ],
+    required_documents: [
+      { type: 'cv', label: 'Resume', satisfied: true, inventory_status: 'ready' },
+      { type: 'other', label: 'Application email to applications@matsprogram.org', satisfied: true },
+    ],
+    created_at: '2026-09-01',
+    updated_at: '2026-10-12',
+  },
+]

@@ -4,6 +4,7 @@ import { useMemo, useState } from 'react'
 import {
   Home as HomeIcon,
   ListChecks,
+  ClipboardList,
   Target,
   Database,
   RadioTower,
@@ -12,6 +13,7 @@ import {
   Archive as ArchiveIcon,
   FlaskConical,
   AlertTriangle,
+  CalendarCheck,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Switch } from '@/components/ui/switch'
@@ -23,12 +25,15 @@ import {
   mockInbox,
   mockProfile,
   mockArchive,
+  mockApplications,
 } from '@/data/mock/atlas-mock'
 import type { AtlasData } from '@/lib/fetch-atlas-data'
 import { daysUntil } from '@/lib/atlas-format'
 import { CommandBar } from '@/components/atlas/command-bar'
+import { TodayView } from '@/components/views/today'
 import { HomeView } from '@/components/views/home'
 import { ActionQueueView } from '@/components/views/action-queue'
+import { ApplicationsView } from '@/components/views/applications'
 import { GapQueueView } from '@/components/views/gap-queue'
 import { PoolView } from '@/components/views/pool'
 import { WatchlistView } from '@/components/views/watchlist'
@@ -37,21 +42,23 @@ import { ProfileView } from '@/components/views/profile'
 import { ArchiveView } from '@/components/views/archive'
 
 const VIEWS = [
-  { id: 'home', label: 'Home', icon: HomeIcon },
+  { id: 'today', label: 'Today', icon: CalendarCheck },
   { id: 'action-queue', label: 'Action Queue', icon: ListChecks },
+  { id: 'applications', label: 'Applications', icon: ClipboardList },
   { id: 'gap-queue', label: 'Gap Queue', icon: Target },
   { id: 'pool', label: 'Pool', icon: Database },
   { id: 'watchlist', label: 'Watchlist', icon: RadioTower },
   { id: 'inbox', label: 'Inbox', icon: InboxIcon },
   { id: 'profile', label: 'Profile', icon: UserCircle },
   { id: 'archive', label: 'Archive', icon: ArchiveIcon },
+  { id: 'home', label: 'Overview', icon: HomeIcon },
 ] as const
 
 type ViewId = (typeof VIEWS)[number]['id']
 
 const URGENT_DAYS = 14
 
-const EMPTY: AtlasData = { opportunities: [], verdicts: [], gaps: [], watchlist: [], inbox: [], profile: null, archive: [] }
+const EMPTY: AtlasData = { opportunities: [], verdicts: [], gaps: [], watchlist: [], inbox: [], profile: null, archive: [], applications: [] }
 
 /**
  * `realData` comes from a server-side Supabase read (RLS denies the anon
@@ -60,7 +67,7 @@ const EMPTY: AtlasData = { opportunities: [], verdicts: [], gaps: [], watchlist:
  * off, so the real pool is what's shown by default.
  */
 export function AppShell({ realData }: { realData?: AtlasData }) {
-  const [active, setActive] = useState<ViewId>('home')
+  const [active, setActive] = useState<ViewId>('today')
   const [preview, setPreview] = useState(false)
 
   const live = realData ?? EMPTY
@@ -71,6 +78,7 @@ export function AppShell({ realData }: { realData?: AtlasData }) {
   const inbox = preview ? mockInbox : live.inbox
   const archive = preview ? mockArchive : live.archive
   const profile = preview ? mockProfile : live.profile
+  const applications = preview ? mockApplications : live.applications
 
   // Deadline alerting (Phase D): a row inside 14 days surfaces hard —
   // Knight-Hennessy closed while sitting in the pool with nothing warning
@@ -157,8 +165,10 @@ export function AppShell({ realData }: { realData?: AtlasData }) {
           </div>
         )}
         <div className="mx-auto max-w-6xl px-8 py-8">
+          {active === 'today' && <TodayView opportunities={opportunities} verdicts={verdicts} gaps={gaps} applications={applications} />}
           {active === 'home' && <HomeView profile={profile} opportunities={opportunities} verdicts={verdicts} />}
           {active === 'action-queue' && <ActionQueueView opportunities={opportunities} verdicts={verdicts} />}
+          {active === 'applications' && <ApplicationsView opportunities={opportunities} applications={applications} profile={profile} />}
           {active === 'gap-queue' && <GapQueueView gaps={gaps} />}
           {active === 'pool' && <PoolView opportunities={opportunities} verdicts={verdicts} />}
           {active === 'watchlist' && <WatchlistView labs={watchlist} />}
