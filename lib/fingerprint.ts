@@ -9,7 +9,9 @@
 // Channel B gate, and both apply here too:
 //   1. Plain substring matching let "ppo" (from "PPO policy networks")
 //      match inside the word "opportunity" itself. Fixed with word-
-//      boundary matching, not substring.
+//      boundary matching (lib/text-match.ts — shared with the bulk-import
+//      Corrections matcher, which hit the same bug twice independently:
+//      "ens" inside "Siemens", "spar" inside "OwlSpark").
 //   2. Common English words that happen to appear inside a technical
 //      fingerprint phrase ("policy", "state", "learning"...) are real
 //      whole words, so they'd word-boundary-match in totally unrelated
@@ -20,6 +22,8 @@
 //      automation" — is handled separately, by a minimum token length
 //      (see MIN_TOKEN_LENGTH) rather than the weak-singles list, since
 //      2-letter tokens carry no signal at all on their own.
+
+import { matchesBigram, matchesToken } from '@/lib/text-match'
 
 const CONNECTORS = new Set([
   'the', 'and', 'for', 'with', 'from', 'this', 'that', 'into', 'via', 'using', 'based', 'on', 'of', 'in',
@@ -88,10 +92,6 @@ export function extractFingerprintKeywords(fingerprint: string[]): FingerprintKe
   return { singles: [...singles], bigrams: bigramPairs }
 }
 
-function escapeRegExp(s: string): string {
-  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-}
-
 /**
  * Whole-word match against free text (e.g. an aggregator post's title +
  * excerpt): any safe single keyword, OR any bigram's two words appearing
@@ -99,9 +99,8 @@ function escapeRegExp(s: string): string {
  * exact spacing). Binary — used as a relevance gate, not a score.
  */
 export function isRelevant(text: string, keywords: FingerprintKeywords): boolean {
-  const lower = text.toLowerCase()
-  if (keywords.singles.some((kw) => new RegExp(`\\b${escapeRegExp(kw)}\\b`, 'i').test(lower))) return true
-  return keywords.bigrams.some(([a, b]) => new RegExp(`\\b${escapeRegExp(a)}\\s+${escapeRegExp(b)}\\b`, 'i').test(lower))
+  if (keywords.singles.some((kw) => matchesToken(text, kw))) return true
+  return keywords.bigrams.some(([a, b]) => matchesBigram(text, a, b))
 }
 
 /**
