@@ -72,6 +72,13 @@ export function daysSince(dateStr?: string | null): number | null {
   return d === null ? null : -d
 }
 
+/** Whole days from one date/timestamp to another (both truncated to their date portion) — e.g. ready_since to deadline, for "sat READY for N days before it expired". */
+export function daysBetween(fromISO: string, toDateStr: string): number {
+  const from = new Date(fromISO.slice(0, 10) + 'T00:00:00')
+  const to = new Date(toDateStr + 'T00:00:00')
+  return Math.round((to.getTime() - from.getTime()) / 86_400_000)
+}
+
 /**
  * Action Queue urgency band (lower = more urgent) — primary sort key for
  * dated rows, so a programme closing in 3 days never sits below one

@@ -1,7 +1,7 @@
 import 'server-only'
 import { supabaseAdmin } from '@/lib/supabase'
 import { extractFingerprintKeywords, overlapScore, type FingerprintKeywords } from '@/lib/fingerprint'
-import type { EligibilityRule, GapType, Opportunity, ProfileSnapshot, RequirementType, VerdictType } from '@/types/atlas'
+import type { EligibilityRule, GapClosureCause, GapType, Opportunity, ProfileSnapshot, RequirementType, VerdictType } from '@/types/atlas'
 
 // Same engine Phase 4's one-off script used, promoted to a reusable module
 // so both single-opportunity diagnosis (manual entry, item C) and full-pool
@@ -47,15 +47,71 @@ const REQUIREMENT_GAP_TYPE: Partial<Record<RequirementType, GapType>> = {
 
 /**
  * ready_since (migration 0010): first-became-READY timestamp, carried
- * forward across the delete+insert cycle both diagnose paths use. Resets to
- * null the moment a row stops being READY, and to now() the moment it
- * starts — never backdated, never guessed from computed_at (which resets on
- * every run and would make every row look freshly-READY forever).
+ * forward across the delete+insert cycle both diagnose paths use. Set
+ * fresh (now()) the moment a row starts a new READY streak, held steady
+ * while it stays READY — and, once it stops being READY, FROZEN rather
+ * than cleared: a row that goes READY -> EXPIRED keeps its last ready_since
+ * forever, which is exactly the fact the "deadlines passed while READY"
+ * counter (item 3) needs ("how many days did this sit READY before it
+ * expired"). This never shows up in the Today "aging READY rows" block by
+ * accident — that block already filters to verdict.type === 'READY' first,
+ * so a frozen value on a non-READY row is simply never read there.
  */
 function computeReadySince(prev: { type: VerdictType; ready_since: string | null } | undefined, newType: VerdictType): string | null {
-  if (newType !== 'READY') return null
-  if (prev?.type === 'READY' && prev.ready_since) return prev.ready_since
-  return new Date().toISOString()
+  if (newType === 'READY') {
+    return prev?.type === 'READY' && prev.ready_since ? prev.ready_since : new Date().toISOString()
+  }
+  return prev?.ready_since ?? null
+}
+
+/**
+ * Why a gap stopped appearing, for one closed gap — 'satisfied' only when
+ * the same requirement/rule still exists and is now marked resolved;
+ * 'rule_changed' when it no longer exists under this label at all (edited
+ * or corrected since the last run); 'opportunity_expired' when the row
+ * itself expired (the gap didn't close, it stopped mattering);
+ * 'opportunity_declined' is set by the decline action itself (item 4), not
+ * detected here. Never defaults to 'satisfied' — an ambiguous case (the
+ * requirement still exists, still unsatisfied, yet the gap vanished
+ * anyway — logically shouldn't happen) falls to 'unknown' instead of a
+ * guess.
+ */
+function classifyGapClosureCause(gap: { type: GapType; label: string }, opp: Opportunity, result: DiagnosisResult): GapClosureCause {
+  if (result.type === 'EXPIRED' || result.type === 'LATE_WINDOW') return 'opportunity_expired'
+  const req = (opp.requirements ?? []).find((r) => r.label === gap.label)
+  if (req) return req.satisfied ? 'satisfied' : 'unknown'
+  const stillDiscretionary = (opp.eligibility_rules ?? []).some((r) => r.rule_type === 'discretionary' && r.rule_text === gap.label)
+  if (stillDiscretionary) return 'unknown'
+  return 'rule_changed'
+}
+
+/**
+ * Diffs a gap list against the previous run's to find what closed. Guard:
+ * a GAP verdict with zero persisted gaps is a contradiction under
+ * diagnoseOne's own definition (its type is LITERALLY derived from
+ * gaps.length > 0) — the only way to reach it is a bug upstream (e.g. a
+ * partial write), not real closures, so this skips and warns instead of
+ * logging every previously-open gap as "closed". (The literal reading of
+ * "zero gaps while not READY" would also fire on every ordinary EXPIRED/
+ * BLOCKED/NOT_YET_OPEN row, which legitimately has zero gaps by design —
+ * that would make 'opportunity_expired' impossible to ever record, so the
+ * guard is scoped to the one combination that's actually impossible.)
+ */
+function diffClosedGaps(
+  prevGaps: { type: GapType; label: string }[],
+  newGaps: { type: GapType; label: string }[],
+  opp: Opportunity,
+  result: DiagnosisResult
+): { opportunity_id: string; gap_type: GapType; label: string; cause: GapClosureCause }[] {
+  if (prevGaps.length === 0) return []
+  if (result.type === 'GAP' && newGaps.length === 0) {
+    console.warn(`[gap-closures] opportunity ${opp.id}: verdict type GAP but zero gaps persisted — skipping closure diff (likely a partial write, not real closures)`)
+    return []
+  }
+  const newKeys = new Set(newGaps.map((g) => `${g.type}:${g.label}`))
+  return prevGaps
+    .filter((g) => !newKeys.has(`${g.type}:${g.label}`))
+    .map((g) => ({ opportunity_id: opp.id, gap_type: g.type, label: g.label, cause: classifyGapClosureCause(g, opp, result) }))
 }
 
 // Schema doesn't (yet) carry a "late applications accepted" flag on
@@ -186,7 +242,21 @@ export function diagnoseOne(opp: Opportunity, facts: ProfileFacts): DiagnosisRes
   }
 }
 
-/** Diagnoses one opportunity against the current profile snapshot, writes the verdict (+ gaps), replacing any prior verdict for this opportunity at this snapshot version. Returns the new verdict row. */
+/**
+ * Diagnoses one opportunity against the current profile snapshot, writes
+ * the verdict (+ gaps), replacing any prior verdict for this opportunity
+ * at this snapshot version. Returns the new verdict row.
+ *
+ * Insert-before-delete, not delete-before-insert: the new verdict+gap rows
+ * are written FIRST (coexisting briefly with the old ones, harmless — they
+ * don't collide since the old row keeps its own id), and the prior row is
+ * only deleted by that exact id once the new rows are confirmed durably
+ * persisted. A crash or failed insert partway through leaves the old
+ * verdict+gaps completely untouched, so nothing gets misread as "closed"
+ * that was never really replaced. Gap-closure provenance (gap_closures,
+ * migration 0011) is likewise only computed and written after the new gaps
+ * are confirmed inserted.
+ */
 export async function diagnoseOpportunity(opportunityId: string) {
   const { data: opp, error: oppErr } = await supabaseAdmin.from('opportunities').select('*').eq('id', opportunityId).single()
   if (oppErr || !opp) throw new Error(`Opportunity not found: ${oppErr?.message ?? opportunityId}`)
@@ -197,15 +267,16 @@ export async function diagnoseOpportunity(opportunityId: string) {
   const facts = await loadProfileFacts(snapshot)
   const result = diagnoseOne(opp as Opportunity, facts)
 
-  const { data: prevVerdict } = await supabaseAdmin
-    .from('verdicts')
-    .select('type, ready_since')
-    .eq('opportunity_id', opportunityId)
-    .eq('snapshot_version', snapshot.version)
-    .maybeSingle()
+  const [{ data: prevVerdict }, { data: prevGaps }] = await Promise.all([
+    supabaseAdmin
+      .from('verdicts')
+      .select('id, type, ready_since')
+      .eq('opportunity_id', opportunityId)
+      .eq('snapshot_version', snapshot.version)
+      .maybeSingle(),
+    supabaseAdmin.from('gaps').select('type, label').eq('opportunity_id', opportunityId),
+  ])
   const ready_since = computeReadySince(prevVerdict ?? undefined, result.type)
-
-  await supabaseAdmin.from('verdicts').delete().eq('opportunity_id', opportunityId).eq('snapshot_version', snapshot.version)
 
   const { data: verdict, error: verdictErr } = await supabaseAdmin
     .from('verdicts')
@@ -230,6 +301,16 @@ export async function diagnoseOpportunity(opportunityId: string) {
     if (gapErr) throw new Error(`Gap insert failed: ${gapErr.message}`)
   }
 
+  const closures = diffClosedGaps(prevGaps ?? [], result.gaps, opp as Opportunity, result)
+  if (closures.length > 0) {
+    const { error: closureErr } = await supabaseAdmin.from('gap_closures').insert(closures)
+    if (closureErr) console.error(`[gap-closures] insert failed for opportunity ${opportunityId}:`, closureErr.message)
+  }
+
+  if (prevVerdict) {
+    await supabaseAdmin.from('verdicts').delete().eq('id', prevVerdict.id)
+  }
+
   return verdict
 }
 
@@ -243,8 +324,10 @@ export async function diagnoseOpportunity(opportunityId: string) {
  * on every single opportunity — harmless for one row, ~450 redundant
  * round-trips for the whole pool (measured: >90s for 77 rows). This
  * fetches the profile and computes facts once, diagnoses every row
- * in-memory, then does one delete + one bulk verdict insert + one bulk
- * gap insert.
+ * in-memory, then does one bulk verdict insert + one bulk gap insert +
+ * one bulk gap_closures insert, and only then one bulk delete of the old
+ * verdict rows by exact id (same insert-before-delete reasoning as
+ * diagnoseOpportunity — see its doc comment).
  */
 export async function diagnosePool() {
   const { data: snapshot, error: snapErr } = await supabaseAdmin.from('profile_snapshots').select('*').eq('is_current', true).single()
@@ -256,14 +339,17 @@ export async function diagnosePool() {
 
   const diagnoses = (opportunities ?? []).map((opp) => ({ opp, result: diagnoseOne(opp as Opportunity, facts) }))
 
-  const { data: prevVerdicts } = await supabaseAdmin
-    .from('verdicts')
-    .select('opportunity_id, type, ready_since')
-    .eq('snapshot_version', snapshot.version)
-  const prevByOpp = new Map((prevVerdicts ?? []).map((v) => [v.opportunity_id, v]))
-
-  // Deleting verdicts cascades to their gaps (gaps.verdict_id ON DELETE CASCADE).
-  await supabaseAdmin.from('verdicts').delete().eq('snapshot_version', snapshot.version)
+  const [{ data: prevVerdicts }, { data: prevGapsRows }] = await Promise.all([
+    supabaseAdmin.from('verdicts').select('id, opportunity_id, type, ready_since').eq('snapshot_version', snapshot.version),
+    supabaseAdmin.from('gaps').select('opportunity_id, type, label'),
+  ])
+  const prevVerdictByOpp = new Map((prevVerdicts ?? []).map((v) => [v.opportunity_id, v]))
+  const prevGapsByOpp = new Map<string, { type: GapType; label: string }[]>()
+  for (const g of prevGapsRows ?? []) {
+    const list = prevGapsByOpp.get(g.opportunity_id) ?? []
+    list.push({ type: g.type as GapType, label: g.label })
+    prevGapsByOpp.set(g.opportunity_id, list)
+  }
 
   const verdictRows = diagnoses.map(({ opp, result }) => ({
     opportunity_id: opp.id,
@@ -274,7 +360,7 @@ export async function diagnosePool() {
     blocking_rule_quote: result.blocking_rule_quote,
     blocking_rule_source_url: result.blocking_rule_source_url,
     fit_score: result.fit_score,
-    ready_since: computeReadySince(prevByOpp.get(opp.id), result.type),
+    ready_since: computeReadySince(prevVerdictByOpp.get(opp.id), result.type),
   }))
   const { data: insertedVerdicts, error: verdictErr } = await supabaseAdmin.from('verdicts').insert(verdictRows).select('id, opportunity_id')
   if (verdictErr) throw new Error(`Verdict batch insert failed: ${verdictErr.message}`)
@@ -286,6 +372,22 @@ export async function diagnosePool() {
   if (gapRows.length > 0) {
     const { error: gapErr } = await supabaseAdmin.from('gaps').insert(gapRows)
     if (gapErr) throw new Error(`Gap batch insert failed: ${gapErr.message}`)
+  }
+
+  const closures = diagnoses.flatMap(({ opp, result }) =>
+    diffClosedGaps(prevGapsByOpp.get(opp.id) ?? [], result.gaps, opp as Opportunity, result)
+  )
+  if (closures.length > 0) {
+    const { error: closureErr } = await supabaseAdmin.from('gap_closures').insert(closures)
+    if (closureErr) console.error('[gap-closures] batch insert failed:', closureErr.message)
+  }
+
+  const oldVerdictIds = (prevVerdicts ?? []).map((v) => v.id)
+  if (oldVerdictIds.length > 0) {
+    // Cascades the old gap rows (verdict_id ON DELETE CASCADE) without
+    // touching the new verdict/gap rows just inserted above — different ids
+    // even for the same opportunity_id, so there's no collision.
+    await supabaseAdmin.from('verdicts').delete().in('id', oldVerdictIds)
   }
 
   return insertedVerdicts ?? []

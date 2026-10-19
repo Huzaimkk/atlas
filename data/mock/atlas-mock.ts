@@ -10,9 +10,12 @@ import type {
   AggregatedGap,
   Application,
   ArchiveEntry,
+  GapClosure,
   InboxLead,
+  MissedDeadline,
   Opportunity,
   ProfileSnapshot,
+  Referee,
   Verdict,
   WatchlistLab,
 } from '@/types/atlas'
@@ -554,4 +557,37 @@ export const mockApplications: Application[] = [
     created_at: '2026-09-01',
     updated_at: '2026-10-12',
   },
+]
+
+export const mockGapClosures: GapClosure[] = [
+  {
+    id: 'closure-gates-transcripts',
+    opportunity_id: 'gates-cambridge',
+    gap_type: 'document',
+    label: 'Transcripts',
+    cause: 'satisfied',
+    closed_at: '2026-10-14',
+    created_at: '2026-10-14',
+  },
+  {
+    id: 'closure-stanford-sop',
+    opportunity_id: 'stanford-biodesign',
+    gap_type: 'document',
+    label: 'Statement of purpose',
+    cause: 'opportunity_expired',
+    closed_at: '2026-08-28',
+    created_at: '2026-08-28',
+  },
+]
+
+export const mockReferees: Referee[] = [
+  { id: 'ref-1', name: 'Mirza Shahid', affiliation: 'Senior Member IEEE', relationship: 'Co-author (AI-DTC paper)', status: 'contacted', status_changed_at: '2026-10-05', status_history: [{ status: 'not_contacted', at: '2026-09-01' }, { status: 'contacted', at: '2026-10-05' }], created_at: '2026-09-01', updated_at: '2026-10-05' },
+  { id: 'ref-2', name: 'DOW Medical University contact', status: 'not_contacted', status_changed_at: '2026-09-01', status_history: [], created_at: '2026-09-01', updated_at: '2026-09-01' },
+  { id: 'ref-3', name: 'A DUET professor', status: 'not_contacted', status_changed_at: '2026-09-01', status_history: [], created_at: '2026-09-01', updated_at: '2026-09-01' },
+  { id: 'ref-4', name: 'Aisha Steel or Petrochem manager', status: 'not_contacted', status_changed_at: '2026-09-01', status_history: [], created_at: '2026-09-01', updated_at: '2026-09-01' },
+  { id: 'ref-5', name: 'DeepLearning.AI program contact', status: 'not_contacted', status_changed_at: '2026-09-01', status_history: [], created_at: '2026-09-01', updated_at: '2026-09-01' },
+]
+
+export const mockMissedDeadlines: MissedDeadline[] = [
+  { opportunity_id: 'stanford-biodesign', title: 'Stanford Biodesign Innovation Fellowship', institution: 'Stanford University', deadline: '2026-08-27', ready_since: null, daysReady: null },
 ]

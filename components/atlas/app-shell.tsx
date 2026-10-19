@@ -26,6 +26,9 @@ import {
   mockProfile,
   mockArchive,
   mockApplications,
+  mockGapClosures,
+  mockReferees,
+  mockMissedDeadlines,
 } from '@/data/mock/atlas-mock'
 import type { AtlasData } from '@/lib/fetch-atlas-data'
 import { daysUntil } from '@/lib/atlas-format'
@@ -58,7 +61,19 @@ type ViewId = (typeof VIEWS)[number]['id']
 
 const URGENT_DAYS = 14
 
-const EMPTY: AtlasData = { opportunities: [], verdicts: [], gaps: [], watchlist: [], inbox: [], profile: null, archive: [], applications: [] }
+const EMPTY: AtlasData = {
+  opportunities: [],
+  verdicts: [],
+  gaps: [],
+  watchlist: [],
+  inbox: [],
+  profile: null,
+  archive: [],
+  applications: [],
+  gapClosures: [],
+  referees: [],
+  missedDeadlines: [],
+}
 
 /**
  * `realData` comes from a server-side Supabase read (RLS denies the anon
@@ -79,6 +94,9 @@ export function AppShell({ realData }: { realData?: AtlasData }) {
   const archive = preview ? mockArchive : live.archive
   const profile = preview ? mockProfile : live.profile
   const applications = preview ? mockApplications : live.applications
+  const gapClosures = preview ? mockGapClosures : live.gapClosures
+  const referees = preview ? mockReferees : live.referees
+  const missedDeadlines = preview ? mockMissedDeadlines : live.missedDeadlines
 
   // Deadline alerting (Phase D): a row inside 14 days surfaces hard —
   // Knight-Hennessy closed while sitting in the pool with nothing warning
@@ -165,7 +183,17 @@ export function AppShell({ realData }: { realData?: AtlasData }) {
           </div>
         )}
         <div className="mx-auto max-w-6xl px-8 py-8">
-          {active === 'today' && <TodayView opportunities={opportunities} verdicts={verdicts} gaps={gaps} applications={applications} />}
+          {active === 'today' && (
+            <TodayView
+              opportunities={opportunities}
+              verdicts={verdicts}
+              gaps={gaps}
+              applications={applications}
+              gapClosures={gapClosures}
+              referees={referees}
+              missedDeadlines={missedDeadlines}
+            />
+          )}
           {active === 'home' && <HomeView profile={profile} opportunities={opportunities} verdicts={verdicts} />}
           {active === 'action-queue' && <ActionQueueView opportunities={opportunities} verdicts={verdicts} />}
           {active === 'applications' && <ApplicationsView opportunities={opportunities} applications={applications} profile={profile} />}

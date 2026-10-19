@@ -336,6 +336,57 @@ export interface Application {
   updated_at: string
 }
 
+// ---- Gap closures & referees (accountability counters, item 3) -----------
+
+/**
+ * Why a gap stopped appearing in the Gap Queue — 'satisfied' is the only
+ * cause that counts as real progress; the others explain why the count
+ * didn't move the way it looks like it did (migration 0011).
+ */
+export type GapClosureCause = 'satisfied' | 'rule_changed' | 'opportunity_expired' | 'opportunity_declined' | 'unknown'
+
+export interface GapClosure {
+  id: string
+  opportunity_id: string
+  gap_type: GapType
+  label: string | null
+  cause: GapClosureCause
+  notes?: string
+  closed_at: string
+  created_at: string
+}
+
+export type RefereeStatus = 'not_contacted' | 'contacted' | 'agreed' | 'declined' | 'letter_submitted'
+
+export interface RefereeStatusEvent {
+  status: RefereeStatus
+  at: string
+}
+
+export interface Referee {
+  id: string
+  name: string
+  affiliation?: string
+  relationship?: string
+  email?: string
+  status: RefereeStatus
+  status_changed_at: string
+  status_history: RefereeStatusEvent[]
+  notes?: string
+  created_at: string
+  updated_at: string
+}
+
+/** A row whose deadline has passed while it would otherwise have diagnosed as READY — the "Deadlines passed while READY" counter (item 3). daysReady is null when no ready_since was ever recorded (the row expired before migration 0010 added that column) — never fabricated. */
+export interface MissedDeadline {
+  opportunity_id: string
+  title: string
+  institution: string
+  deadline: string
+  ready_since: string | null
+  daysReady: number | null
+}
+
 // ---- Archive ---------------------------------------------------------------
 
 export interface ArchiveEntry {
