@@ -129,8 +129,8 @@ export interface ProfileFacts {
   fingerprintKeywords: FingerprintKeywords
 }
 
-export async function loadProfileFacts(snapshot: ProfileSnapshot & { id: string }): Promise<ProfileFacts> {
-  const { data: postDegreeHours } = await supabaseAdmin.rpc('post_degree_hours', { p_snapshot_id: snapshot.id })
+export async function loadProfileFacts(snapshot: ProfileSnapshot & { id: string }, userId: string): Promise<ProfileFacts> {
+  const { data: postDegreeHours } = await supabaseAdmin.rpc('post_degree_hours', { p_user_id: userId })
   return {
     citizenship: snapshot.identity.citizenship,
     hasCompletedDegree: /completed/i.test(snapshot.identity.current_degree_level),
@@ -257,14 +257,14 @@ export function diagnoseOne(opp: Opportunity, facts: ProfileFacts): DiagnosisRes
  * migration 0011) is likewise only computed and written after the new gaps
  * are confirmed inserted.
  */
-export async function diagnoseOpportunity(opportunityId: string) {
+export async function diagnoseOpportunity(opportunityId: string, userId: string) {
   const { data: opp, error: oppErr } = await supabaseAdmin.from('opportunities').select('*').eq('id', opportunityId).single()
   if (oppErr || !opp) throw new Error(`Opportunity not found: ${oppErr?.message ?? opportunityId}`)
 
-  const { data: snapshot, error: snapErr } = await supabaseAdmin.from('profile_snapshots').select('*').eq('is_current', true).single()
+  const { data: snapshot, error: snapErr } = await supabaseAdmin.from('profile_snapshots').select('*').eq('is_current', true).eq('user_id', userId).single()
   if (snapErr || !snapshot) throw new Error(`No current profile snapshot: ${snapErr?.message}`)
 
-  const facts = await loadProfileFacts(snapshot)
+  const facts = await loadProfileFacts(snapshot, userId)
   const result = diagnoseOne(opp as Opportunity, facts)
 
   const [{ data: prevVerdict }, { data: prevGaps }] = await Promise.all([
@@ -273,14 +273,16 @@ export async function diagnoseOpportunity(opportunityId: string) {
       .select('id, type, ready_since')
       .eq('opportunity_id', opportunityId)
       .eq('snapshot_version', snapshot.version)
+      .eq('user_id', userId)
       .maybeSingle(),
-    supabaseAdmin.from('gaps').select('type, label').eq('opportunity_id', opportunityId),
+    supabaseAdmin.from('gaps').select('type, label').eq('opportunity_id', opportunityId).eq('user_id', userId),
   ])
   const ready_since = computeReadySince(prevVerdict ?? undefined, result.type)
 
   const { data: verdict, error: verdictErr } = await supabaseAdmin
     .from('verdicts')
     .insert({
+      user_id: userId,
       opportunity_id: opportunityId,
       snapshot_version: snapshot.version,
       type: result.type,
@@ -296,12 +298,12 @@ export async function diagnoseOpportunity(opportunityId: string) {
   if (verdictErr) throw new Error(`Verdict insert failed: ${verdictErr.message}`)
 
   if (result.gaps.length > 0) {
-    const gapRows = result.gaps.map((g) => ({ ...g, ...GAP_TYPE_DEFAULTS[g.type], opportunity_id: opportunityId, verdict_id: verdict.id }))
+    const gapRows = result.gaps.map((g) => ({ ...g, ...GAP_TYPE_DEFAULTS[g.type], user_id: userId, opportunity_id: opportunityId, verdict_id: verdict.id }))
     const { error: gapErr } = await supabaseAdmin.from('gaps').insert(gapRows)
     if (gapErr) throw new Error(`Gap insert failed: ${gapErr.message}`)
   }
 
-  const closures = diffClosedGaps(prevGaps ?? [], result.gaps, opp as Opportunity, result)
+  const closures = diffClosedGaps(prevGaps ?? [], result.gaps, opp as Opportunity, result).map((c) => ({ ...c, user_id: userId }))
   if (closures.length > 0) {
     const { error: closureErr } = await supabaseAdmin.from('gap_closures').insert(closures)
     if (closureErr) console.error(`[gap-closures] insert failed for opportunity ${opportunityId}:`, closureErr.message)
@@ -329,10 +331,10 @@ export async function diagnoseOpportunity(opportunityId: string) {
  * verdict rows by exact id (same insert-before-delete reasoning as
  * diagnoseOpportunity — see its doc comment).
  */
-export async function diagnosePool() {
-  const { data: snapshot, error: snapErr } = await supabaseAdmin.from('profile_snapshots').select('*').eq('is_current', true).single()
+export async function diagnosePool(userId: string) {
+  const { data: snapshot, error: snapErr } = await supabaseAdmin.from('profile_snapshots').select('*').eq('is_current', true).eq('user_id', userId).single()
   if (snapErr || !snapshot) throw new Error(`No current profile snapshot: ${snapErr?.message}`)
-  const facts = await loadProfileFacts(snapshot)
+  const facts = await loadProfileFacts(snapshot, userId)
 
   const { data: opportunities, error: oppErr } = await supabaseAdmin.from('opportunities').select('*')
   if (oppErr) throw new Error(`Could not load opportunities: ${oppErr.message}`)
@@ -340,8 +342,8 @@ export async function diagnosePool() {
   const diagnoses = (opportunities ?? []).map((opp) => ({ opp, result: diagnoseOne(opp as Opportunity, facts) }))
 
   const [{ data: prevVerdicts }, { data: prevGapsRows }] = await Promise.all([
-    supabaseAdmin.from('verdicts').select('id, opportunity_id, type, ready_since').eq('snapshot_version', snapshot.version),
-    supabaseAdmin.from('gaps').select('opportunity_id, type, label'),
+    supabaseAdmin.from('verdicts').select('id, opportunity_id, type, ready_since').eq('snapshot_version', snapshot.version).eq('user_id', userId),
+    supabaseAdmin.from('gaps').select('opportunity_id, type, label').eq('user_id', userId),
   ])
   const prevVerdictByOpp = new Map((prevVerdicts ?? []).map((v) => [v.opportunity_id, v]))
   const prevGapsByOpp = new Map<string, { type: GapType; label: string }[]>()
@@ -352,6 +354,7 @@ export async function diagnosePool() {
   }
 
   const verdictRows = diagnoses.map(({ opp, result }) => ({
+    user_id: userId,
     opportunity_id: opp.id,
     snapshot_version: snapshot.version,
     type: result.type,
@@ -367,7 +370,7 @@ export async function diagnosePool() {
 
   const verdictIdByOpp = new Map((insertedVerdicts ?? []).map((v) => [v.opportunity_id, v.id]))
   const gapRows = diagnoses.flatMap(({ opp, result }) =>
-    result.gaps.map((g) => ({ ...g, ...GAP_TYPE_DEFAULTS[g.type], opportunity_id: opp.id, verdict_id: verdictIdByOpp.get(opp.id) }))
+    result.gaps.map((g) => ({ ...g, ...GAP_TYPE_DEFAULTS[g.type], user_id: userId, opportunity_id: opp.id, verdict_id: verdictIdByOpp.get(opp.id) }))
   )
   if (gapRows.length > 0) {
     const { error: gapErr } = await supabaseAdmin.from('gaps').insert(gapRows)
@@ -375,7 +378,7 @@ export async function diagnosePool() {
   }
 
   const closures = diagnoses.flatMap(({ opp, result }) =>
-    diffClosedGaps(prevGapsByOpp.get(opp.id) ?? [], result.gaps, opp as Opportunity, result)
+    diffClosedGaps(prevGapsByOpp.get(opp.id) ?? [], result.gaps, opp as Opportunity, result).map((c) => ({ ...c, user_id: userId }))
   )
   if (closures.length > 0) {
     const { error: closureErr } = await supabaseAdmin.from('gap_closures').insert(closures)

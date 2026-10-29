@@ -25,7 +25,7 @@ import { TOOL_DEFS, WRITE_TOOLS, humanizeWriteAction, type ToolName } from '@/li
 // '@/lib/command-tools' keeps working unchanged.
 export { TOOL_DEFS, WRITE_TOOLS, humanizeWriteAction, type ToolName }
 
-export async function executeReadTool(name: ToolName, input: Record<string, unknown>) {
+export async function executeReadTool(name: ToolName, input: Record<string, unknown>, userId: string) {
   switch (name) {
     case 'query_deadlines': {
       const days = Number(input.days) || 30
@@ -38,7 +38,7 @@ export async function executeReadTool(name: ToolName, input: Record<string, unkn
         .gte('deadline', today)
         .lte('deadline', cutoff)
         .order('deadline', { ascending: true })
-      const { data: verdicts } = await supabaseAdmin.from('verdicts').select('opportunity_id, type')
+      const { data: verdicts } = await supabaseAdmin.from('verdicts').select('opportunity_id, type').eq('user_id', userId)
       const verdictById = new Map((verdicts ?? []).map((v) => [v.opportunity_id, v.type]))
       return (data ?? []).map((o) => ({ title: o.title, institution: o.institution, deadline: formatDeadline(o.deadline), verdict: verdictById.get(o.id) }))
     }
@@ -46,13 +46,13 @@ export async function executeReadTool(name: ToolName, input: Record<string, unkn
       const title = String(input.opportunity_title ?? '')
       const { data: opp } = await supabaseAdmin.from('opportunities').select('*').ilike('title', `%${title}%`).limit(1).maybeSingle()
       if (!opp) return { error: `No opportunity matching "${title}"` }
-      const { data: verdict } = await supabaseAdmin.from('verdicts').select('*').eq('opportunity_id', opp.id).maybeSingle()
-      const { data: gaps } = await supabaseAdmin.from('gaps').select('type, label, time_estimate, cost_estimate').eq('opportunity_id', opp.id)
+      const { data: verdict } = await supabaseAdmin.from('verdicts').select('*').eq('opportunity_id', opp.id).eq('user_id', userId).maybeSingle()
+      const { data: gaps } = await supabaseAdmin.from('gaps').select('type, label, time_estimate, cost_estimate').eq('opportunity_id', opp.id).eq('user_id', userId)
       return { title: opp.title, verdict: verdict?.type, reason: verdict?.reason, blocking_rule_quote: verdict?.blocking_rule_quote, blocking_rule_source_url: verdict?.blocking_rule_source_url, gaps }
     }
     case 'query_gap_queue': {
       const limit = Number(input.limit) || 10
-      const { data } = await supabaseAdmin.from('gap_queue').select('*').order('unblock_count', { ascending: false }).limit(limit)
+      const { data } = await supabaseAdmin.from('gap_queue').select('*').eq('user_id', userId).order('unblock_count', { ascending: false }).limit(limit)
       return data
     }
     case 'search_pool': {
@@ -68,7 +68,7 @@ export async function executeReadTool(name: ToolName, input: Record<string, unkn
   }
 }
 
-export async function executeWriteTool(name: ToolName, input: Record<string, unknown>) {
+export async function executeWriteTool(name: ToolName, input: Record<string, unknown>, userId: string) {
   switch (name) {
     case 'mark_requirement_satisfied': {
       const title = String(input.opportunity_title ?? '')
@@ -80,11 +80,11 @@ export async function executeWriteTool(name: ToolName, input: Record<string, unk
       )
       const { error } = await supabaseAdmin.from('opportunities').update({ requirements }).eq('id', opp.id)
       if (error) return { error: error.message }
-      const verdict = await diagnoseOpportunity(opp.id)
+      const verdict = await diagnoseOpportunity(opp.id, userId)
       return { opportunity: opp.title, requirement: label, new_verdict: verdict.type }
     }
     case 'update_profile_credential': {
-      const { data: current, error: curErr } = await supabaseAdmin.from('profile_snapshots').select('*').eq('is_current', true).single()
+      const { data: current, error: curErr } = await supabaseAdmin.from('profile_snapshots').select('*').eq('is_current', true).eq('user_id', userId).single()
       if (curErr || !current) return { error: `No current profile snapshot: ${curErr?.message}` }
 
       const item = String(input.item ?? '')
@@ -97,9 +97,10 @@ export async function executeWriteTool(name: ToolName, input: Record<string, unk
           : p
       )
 
-      const { version, id: _oldId, created_at: _createdAt, ...rest } = current
+      const { version, id: _oldId, created_at: _createdAt, user_version: _oldUserVersion, ...rest } = current
       void _oldId
       void _createdAt
+      void _oldUserVersion // let the trigger assign a fresh user_version for the new row, not carry the old one over
 
       // Must flip the old row to is_current:false BEFORE inserting the new
       // one — the partial unique index allows only one is_current:true row
@@ -118,7 +119,7 @@ export async function executeWriteTool(name: ToolName, input: Record<string, unk
         return { error: insertErr.message }
       }
 
-      const verdicts = await diagnosePool()
+      const verdicts = await diagnosePool(userId)
       return { new_snapshot_version: newSnapshot.version, item, status, opportunities_rediagnosed: verdicts.length }
     }
     case 'add_opportunity_from_search': {

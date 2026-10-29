@@ -37,6 +37,9 @@ yarn-error.log*
 # vercel
 .vercel
 
+# scripts/backup.ts output — weekly pg_dump, never committed
+/backups
+
 # typescript
 *.tsbuildinfo
 next-env.d.ts

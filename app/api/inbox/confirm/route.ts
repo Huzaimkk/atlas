@@ -1,15 +1,19 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase'
 import { diagnoseOpportunity } from '@/lib/diagnostic-engine'
+import { getSessionUserId } from '@/lib/auth-server'
 import type { Opportunity } from '@/types/atlas'
 
 export async function POST(req: NextRequest) {
+  const userId = await getSessionUserId().catch(() => null)
+  if (!userId) return NextResponse.json({ error: 'Unauthenticated' }, { status: 401 })
+
   const body = await req.json()
   const leadId = String(body.leadId ?? '')
   const sourceUrlOverride = body.sourceUrl ? String(body.sourceUrl).trim() : null
   if (!leadId) return NextResponse.json({ error: 'Missing leadId' }, { status: 400 })
 
-  const { data: lead, error: leadErr } = await supabaseAdmin.from('inbox_leads').select('*').eq('id', leadId).single()
+  const { data: lead, error: leadErr } = await supabaseAdmin.from('inbox_leads').select('*').eq('id', leadId).eq('user_id', userId).single()
   if (leadErr || !lead) return NextResponse.json({ error: `Lead not found: ${leadErr?.message}` }, { status: 404 })
   if (lead.confidence === 'resolved') return NextResponse.json({ error: 'This lead was already saved' }, { status: 409 })
   if (lead.extraction_error) return NextResponse.json({ error: `Can't save — extraction failed: ${lead.extraction_error}` }, { status: 400 })
@@ -53,9 +57,9 @@ export async function POST(req: NextRequest) {
     .single()
   if (insertErr) return NextResponse.json({ error: insertErr.message }, { status: 500 })
 
-  const verdict = await diagnoseOpportunity(row.id)
+  const verdict = await diagnoseOpportunity(row.id, userId)
 
-  await supabaseAdmin.from('inbox_leads').update({ confidence: 'resolved', dedupe_match_id: row.id, source_url: sourceUrl }).eq('id', leadId)
+  await supabaseAdmin.from('inbox_leads').update({ confidence: 'resolved', dedupe_match_id: row.id, source_url: sourceUrl }).eq('id', leadId).eq('user_id', userId)
 
   return NextResponse.json({ ok: true, opportunity: row, verdict })
 }

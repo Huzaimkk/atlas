@@ -24,6 +24,27 @@ async function loadCrawlState(sourceKey: string): Promise<CrawlStateRow> {
   return data ?? { source_key: sourceKey, last_seen_at: null, seen_external_ids: [] }
 }
 
+/**
+ * Channel B inserts into the shared `opportunities` table, but every
+ * verdict is per-user (migration 0012). A newly discovered row needs a
+ * verdict for every user who has a profile, not just one — this is the
+ * multi-tenant-correct replacement for the old single-call
+ * diagnoseOpportunity(row.id), not a new feature (full incremental
+ * per-user re-diagnosis at scale is P5's job; this just keeps a shared-pool
+ * insert from silently producing a verdict for one arbitrary user only).
+ */
+async function diagnoseNewOpportunityForAllUsers(opportunityId: string) {
+  const { data: profiles } = await supabaseAdmin.from('profile_snapshots').select('user_id').eq('is_current', true)
+  const userIds = [...new Set((profiles ?? []).map((p) => p.user_id).filter((id): id is string => !!id))]
+  for (const userId of userIds) {
+    try {
+      await diagnoseOpportunity(opportunityId, userId)
+    } catch (err) {
+      console.error(`[channel-b] diagnosis failed for opportunity ${opportunityId}, user ${userId}:`, err)
+    }
+  }
+}
+
 export interface SourceRunResult {
   sourceKey: string
   status: 'ok' | 'error' | 'unresolved'
@@ -140,7 +161,7 @@ async function processItems(source: ChannelBSource, items: RawItem[], keywords: 
     }
     result.itemsInserted++
     result.insertedTitles.push(row.title)
-    await diagnoseOpportunity(row.id)
+    await diagnoseNewOpportunityForAllUsers(row.id)
   }
 
   const mergedSeen = [...newSeenIds, ...state.seen_external_ids].slice(0, SEEN_ID_CAP)
@@ -194,9 +215,20 @@ export async function runChannelBSource(source: ChannelBSource, keywords: Finger
   }
 }
 
-/** Runs every registered Channel B source (sequentially — polite to the aggregators, and these are low-volume per run) against the current profile's research fingerprint. */
+/**
+ * Runs every registered Channel B source (sequentially — polite to the
+ * aggregators, and these are low-volume per run) against a profile's
+ * research fingerprint, used only to decide which shared-pool candidates
+ * are relevant enough to insert — never written or returned anywhere
+ * per-user, so there is no cross-tenant read to guard here (unlike every
+ * other profile_snapshots read in this codebase). Multi-tenant leaves
+ * "whose fingerprint curates the shared pool" genuinely unresolved — out
+ * of P1's security scope — so this picks *a* current snapshot rather than
+ * crashing once more than one exists; .single() would throw as soon as a
+ * second user has a current profile.
+ */
 export async function runChannelBIngest(): Promise<SourceRunResult[]> {
-  const { data: snapshot, error } = await supabaseAdmin.from('profile_snapshots').select('research_fingerprint').eq('is_current', true).single()
+  const { data: snapshot, error } = await supabaseAdmin.from('profile_snapshots').select('research_fingerprint').eq('is_current', true).limit(1).maybeSingle()
   if (error || !snapshot) throw new Error(`No current profile snapshot: ${error?.message}`)
   const keywords = extractFingerprintKeywords(snapshot.research_fingerprint)
 

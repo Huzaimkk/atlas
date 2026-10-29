@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase'
+import { getSessionUserId } from '@/lib/auth-server'
 import type { RefereeStatus, RefereeStatusEvent } from '@/types/atlas'
 
 export const dynamic = 'force-dynamic'
@@ -12,10 +13,13 @@ export const dynamic = 'force-dynamic'
  * progress toward that, not the thing itself.
  */
 export async function POST(req: Request) {
+  const userId = await getSessionUserId().catch(() => null)
+  if (!userId) return NextResponse.json({ error: 'Unauthenticated' }, { status: 401 })
+
   const body = (await req.json()) as { id?: string; status?: RefereeStatus }
   if (!body.id || !body.status) return NextResponse.json({ error: 'id and status are required' }, { status: 400 })
 
-  const { data: existing } = await supabaseAdmin.from('referees').select('*').eq('id', body.id).maybeSingle()
+  const { data: existing } = await supabaseAdmin.from('referees').select('*').eq('id', body.id).eq('user_id', userId).maybeSingle()
   if (!existing) return NextResponse.json({ error: `No referee with id ${body.id}` }, { status: 404 })
 
   if (body.status === existing.status) return NextResponse.json({ referee: existing })
@@ -28,11 +32,13 @@ export async function POST(req: Request) {
     .from('referees')
     .update({ status: body.status, status_changed_at: now, status_history, updated_at: now })
     .eq('id', body.id)
+    .eq('user_id', userId)
     .select('*')
     .single()
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
   await supabaseAdmin.from('command_log').insert({
+    user_id: userId,
     prompt: `Referees: ${existing.name} → ${body.status}`,
     actions: [{ tool: 'update_referee_status', input: { id: body.id, status: body.status }, output: { referee_id: referee.id } }],
     status: 'confirmed',

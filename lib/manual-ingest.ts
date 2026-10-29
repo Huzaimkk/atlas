@@ -163,10 +163,10 @@ export async function findDedupeMatch(title: string, sourceUrl: string | null): 
 }
 
 /** Fills in the same defaults Channel B's ingest uses for fields a lightweight extraction can't responsibly guess, so diagnoseOne() has a complete Opportunity to evaluate. Preview-only — never persisted as-is. */
-export async function previewDiagnosis(partial: Partial<Opportunity>, sourceUrl: string | null): Promise<DiagnosisResult> {
-  const { data: snapshot, error } = await supabaseAdmin.from('profile_snapshots').select('*').eq('is_current', true).single()
+export async function previewDiagnosis(partial: Partial<Opportunity>, sourceUrl: string | null, userId: string): Promise<DiagnosisResult> {
+  const { data: snapshot, error } = await supabaseAdmin.from('profile_snapshots').select('*').eq('is_current', true).eq('user_id', userId).single()
   if (error || !snapshot) throw new Error(`No current profile snapshot: ${error?.message}`)
-  const facts = await loadProfileFacts(snapshot)
+  const facts = await loadProfileFacts(snapshot, userId)
 
   const full: Opportunity = {
     id: 'preview',

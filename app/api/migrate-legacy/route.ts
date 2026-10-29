@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { randomUUID } from 'crypto'
 import { supabaseAdmin } from '@/lib/supabase'
+import { getSessionUserId } from '@/lib/auth-server'
 import type { LegacyPayload } from '@/lib/migrate-legacy-storage'
 
 // One-time migration off the pre-v2 localStorage trackers (spec §7:
@@ -45,6 +46,9 @@ const STAGE_MAP = {
 } as const
 
 export async function POST(req: Request) {
+  const userId = await getSessionUserId().catch(() => null)
+  if (!userId) return NextResponse.json({ error: 'Unauthenticated' }, { status: 401 })
+
   const payload: LegacyPayload = await req.json()
   const summary = {
     professors_migrated: 0,
@@ -86,6 +90,7 @@ export async function POST(req: Request) {
     summary.professors_migrated++
 
     const { error: appError } = await supabaseAdmin.from('applications').insert({
+      user_id: userId,
       opportunity_id: newId,
       status: STAGE_MAP[p.stage],
       notes: p.notes ?? null,
@@ -96,6 +101,7 @@ export async function POST(req: Request) {
 
   for (const e of payload.emailLog) {
     const { error } = await supabaseAdmin.from('outreach_log').insert({
+      user_id: userId,
       opportunity_id: professorIdMap.get(e.professor_id) ?? null,
       contact_name: e.professor_name,
       channel: 'email',
@@ -136,6 +142,7 @@ export async function POST(req: Request) {
     summary.deadlines_migrated++
 
     const { error: appError } = await supabaseAdmin.from('applications').insert({
+      user_id: userId,
       opportunity_id: newId,
       status: d.applied ? 'submitted' : 'not_started',
       notes: d.notes || d.round ? `${d.round ?? ''} ${d.notes ?? ''}`.trim() : null,

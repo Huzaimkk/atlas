@@ -1,15 +1,19 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase'
+import { getSessionUserId } from '@/lib/auth-server'
 
 export async function POST(req: NextRequest) {
+  const userId = await getSessionUserId().catch(() => null)
+  if (!userId) return NextResponse.json({ error: 'Unauthenticated' }, { status: 401 })
+
   const body = await req.json()
   const leadId = String(body.leadId ?? '')
   if (!leadId) return NextResponse.json({ error: 'Missing leadId' }, { status: 400 })
 
-  const { data: lead } = await supabaseAdmin.from('inbox_leads').select('confidence').eq('id', leadId).maybeSingle()
+  const { data: lead } = await supabaseAdmin.from('inbox_leads').select('confidence').eq('id', leadId).eq('user_id', userId).maybeSingle()
   if (lead?.confidence === 'resolved') return NextResponse.json({ error: 'Already saved — nothing to discard' }, { status: 409 })
 
-  const { error } = await supabaseAdmin.from('inbox_leads').delete().eq('id', leadId)
+  const { error } = await supabaseAdmin.from('inbox_leads').delete().eq('id', leadId).eq('user_id', userId)
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
   return NextResponse.json({ ok: true })
 }

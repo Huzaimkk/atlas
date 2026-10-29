@@ -43,10 +43,11 @@ export interface AtlasData {
 async function computeMissedDeadlines(
   opportunities: Opportunity[],
   verdicts: Verdict[],
-  profile: (ProfileSnapshot & { id: string }) | null
+  profile: (ProfileSnapshot & { id: string }) | null,
+  userId: string
 ): Promise<MissedDeadline[]> {
   if (!profile) return []
-  const facts = await loadProfileFacts(profile)
+  const facts = await loadProfileFacts(profile, userId)
   const verdictByOpp = new Map(verdicts.map((v) => [v.opportunity_id, v]))
 
   const missed: MissedDeadline[] = []
@@ -71,8 +72,15 @@ async function computeMissedDeadlines(
   return missed.sort((a, b) => (b.daysReady ?? -1) - (a.daysReady ?? -1))
 }
 
-/** Server-only real data read. RLS denies the anon key on every table by design (Phase 1) — this must run server-side using the service-role client, never in a client component. */
-export async function fetchAtlasData(): Promise<AtlasData> {
+/**
+ * Server-only real data read, scoped to one user. supabaseAdmin (service
+ * role) bypasses RLS entirely, so the database provides no backstop here —
+ * every per-user table query below carries an explicit .eq('user_id', ...)
+ * because this code path is the only thing standing between one user's
+ * data and another's. `opportunities` and `page_snapshots` stay
+ * unscoped — they're the shared pool, not per-user.
+ */
+export async function fetchAtlasData(userId: string): Promise<AtlasData> {
   const monthStart = new Date()
   monthStart.setDate(1)
   monthStart.setHours(0, 0, 0, 0)
@@ -88,13 +96,13 @@ export async function fetchAtlasData(): Promise<AtlasData> {
     { data: refereeRows },
   ] = await Promise.all([
     supabaseAdmin.from('opportunities').select('*'),
-    supabaseAdmin.from('verdicts').select('*'),
-    supabaseAdmin.from('gap_queue').select('*'),
-    supabaseAdmin.from('profile_snapshots').select('*').eq('is_current', true).maybeSingle(),
-    supabaseAdmin.from('inbox_leads').select('*').neq('confidence', 'resolved').order('dropped_at', { ascending: false }),
-    supabaseAdmin.from('applications').select('*'),
-    supabaseAdmin.from('gap_closures').select('*').gte('closed_at', monthStart.toISOString()).order('closed_at', { ascending: false }),
-    supabaseAdmin.from('referees').select('*').order('created_at', { ascending: true }),
+    supabaseAdmin.from('verdicts').select('*').eq('user_id', userId),
+    supabaseAdmin.from('gap_queue').select('*').eq('user_id', userId),
+    supabaseAdmin.from('profile_snapshots').select('*').eq('is_current', true).eq('user_id', userId).maybeSingle(),
+    supabaseAdmin.from('inbox_leads').select('*').eq('user_id', userId).neq('confidence', 'resolved').order('dropped_at', { ascending: false }),
+    supabaseAdmin.from('applications').select('*').eq('user_id', userId),
+    supabaseAdmin.from('gap_closures').select('*').eq('user_id', userId).gte('closed_at', monthStart.toISOString()).order('closed_at', { ascending: false }),
+    supabaseAdmin.from('referees').select('*').eq('user_id', userId).order('created_at', { ascending: true }),
   ])
 
   const gaps: AggregatedGap[] = (gapQueue ?? []).map((g) => ({
@@ -140,6 +148,6 @@ export async function fetchAtlasData(): Promise<AtlasData> {
     applications: applications ?? [],
     gapClosures: gapClosureRows ?? [],
     referees: refereeRows ?? [],
-    missedDeadlines: await computeMissedDeadlines(opportunities ?? [], verdicts ?? [], profile ?? null),
+    missedDeadlines: await computeMissedDeadlines(opportunities ?? [], verdicts ?? [], profile ?? null, userId),
   }
 }

@@ -9,6 +9,13 @@ const { rows } = await client.query(
   `select relname, reloptions from pg_class where relname = 'gap_queue'`
 )
 console.log('[pg_class] gap_queue reloptions ->', rows[0]?.reloptions ?? null)
+// Multi-tenant (migration 0012): profile_snapshots.user_id is NOT NULL now,
+// so this regression test needs a real owner id to insert against — any
+// existing user works, this test only cares about gap_queue's anon-key
+// exposure, not whose row it is.
+const { rows: ownerRows } = await client.query('select id from auth.users limit 1')
+const ownerId = ownerRows[0]?.id
+if (!ownerId) { console.error('No users found — run scripts/seed-multi-tenant-user.mjs first.'); process.exit(1) }
 await client.end()
 
 const admin = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY)
@@ -16,7 +23,7 @@ const anon = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL, process.env.NEXT
 
 const TEST_VERSION = 999999
 await admin.from('profile_snapshots').insert({
-  version: TEST_VERSION, is_current: false,
+  user_id: ownerId, version: TEST_VERSION, is_current: false,
   identity: {}, credentials: {}, evidence: {}, teaching_service: {}, document_inventory: {},
 })
 const opp = await admin.from('opportunities').insert({
@@ -25,10 +32,10 @@ const opp = await admin.from('opportunities').insert({
   source_type: 'manual', verification_level: 'conflicting', origin: 'manual',
 }).select('id').single()
 const verdict = await admin.from('verdicts').insert({
-  opportunity_id: opp.data.id, snapshot_version: TEST_VERSION, type: 'GAP',
+  user_id: ownerId, opportunity_id: opp.data.id, snapshot_version: TEST_VERSION, type: 'GAP',
 }).select('id').single()
 await admin.from('gaps').insert({
-  verdict_id: verdict.data.id, opportunity_id: opp.data.id, type: 'document', label: 'RLS re-test gap',
+  user_id: ownerId, verdict_id: verdict.data.id, opportunity_id: opp.data.id, type: 'document', label: 'RLS re-test gap',
 })
 
 const anonGapQueue = await anon.from('gap_queue').select('*')

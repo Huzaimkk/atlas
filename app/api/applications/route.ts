@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase'
+import { getSessionUserId } from '@/lib/auth-server'
 import { seedRequiredDocuments } from '@/lib/application-documents'
 import type { ApplicationStatus, ApplicationStatusEvent, Opportunity, ProfileSnapshot, RequiredDocument } from '@/types/atlas'
 
@@ -15,6 +16,9 @@ export const dynamic = 'force-dynamic'
  * not just reflected in the row's current state.
  */
 export async function POST(req: Request) {
+  const userId = await getSessionUserId().catch(() => null)
+  if (!userId) return NextResponse.json({ error: 'Unauthenticated' }, { status: 401 })
+
   const body = (await req.json()) as {
     opportunity_id?: string
     status?: ApplicationStatus
@@ -24,7 +28,7 @@ export async function POST(req: Request) {
   const opportunity_id = body.opportunity_id
   if (!opportunity_id) return NextResponse.json({ error: 'opportunity_id is required' }, { status: 400 })
 
-  const { data: existing } = await supabaseAdmin.from('applications').select('*').eq('opportunity_id', opportunity_id).maybeSingle()
+  const { data: existing } = await supabaseAdmin.from('applications').select('*').eq('opportunity_id', opportunity_id).eq('user_id', userId).maybeSingle()
 
   const now = new Date().toISOString()
   const statusChanged = !!body.status && body.status !== existing?.status
@@ -33,7 +37,7 @@ export async function POST(req: Request) {
   if (!required_documents) {
     const [{ data: opp }, { data: profile }] = await Promise.all([
       supabaseAdmin.from('opportunities').select('requirements').eq('id', opportunity_id).single(),
-      supabaseAdmin.from('profile_snapshots').select('*').eq('is_current', true).maybeSingle(),
+      supabaseAdmin.from('profile_snapshots').select('*').eq('is_current', true).eq('user_id', userId).maybeSingle(),
     ])
     required_documents = seedRequiredDocuments((opp?.requirements ?? []) as Opportunity['requirements'], (profile as ProfileSnapshot) ?? null)
   }
@@ -43,6 +47,7 @@ export async function POST(req: Request) {
   const status_history = statusChanged || !existing ? [...history, { status, at: now }] : history
 
   const row = {
+    user_id: userId,
     opportunity_id,
     status,
     status_changed_at: statusChanged || !existing ? now : (existing?.status_changed_at ?? now),
@@ -54,7 +59,7 @@ export async function POST(req: Request) {
 
   const { data: application, error } = await supabaseAdmin
     .from('applications')
-    .upsert(row, { onConflict: 'opportunity_id' })
+    .upsert(row, { onConflict: 'user_id,opportunity_id' })
     .select('*')
     .single()
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
@@ -62,6 +67,7 @@ export async function POST(req: Request) {
   if (statusChanged || !existing) {
     const { data: opp } = await supabaseAdmin.from('opportunities').select('title').eq('id', opportunity_id).maybeSingle()
     await supabaseAdmin.from('command_log').insert({
+      user_id: userId,
       prompt: `Applications: ${opp?.title ?? opportunity_id} → ${status}`,
       actions: [{ tool: 'update_application_status', input: { opportunity_id, status }, output: { application_id: application.id } }],
       status: 'confirmed',

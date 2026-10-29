@@ -1,11 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase'
 import { extractFromText, fetchRawText, findDedupeMatch, previewDiagnosis } from '@/lib/manual-ingest'
+import { getSessionUserId } from '@/lib/auth-server'
 import type { Origin } from '@/types/atlas'
 
 const URL_RE = /^https?:\/\/\S+$/i
 
 export async function POST(req: NextRequest) {
+  const userId = await getSessionUserId().catch(() => null)
+  if (!userId) return NextResponse.json({ error: 'Unauthenticated' }, { status: 401 })
+
   const body = await req.json()
   const raw = String(body.raw ?? '').trim()
   if (!raw) return NextResponse.json({ error: 'Nothing pasted' }, { status: 400 })
@@ -21,7 +25,7 @@ export async function POST(req: NextRequest) {
     } catch (err) {
       const { data: lead } = await supabaseAdmin
         .from('inbox_leads')
-        .insert({ origin, raw_excerpt: raw, extracted: {}, confidence: 'unverified', extraction_error: `Could not fetch that URL: ${String(err)}`, source_url: sourceUrl })
+        .insert({ user_id: userId, origin, raw_excerpt: raw, extracted: {}, confidence: 'unverified', extraction_error: `Could not fetch that URL: ${String(err)}`, source_url: sourceUrl })
         .select('*')
         .single()
       return NextResponse.json({ leadId: lead?.id, error: `Could not fetch that URL: ${String(err)}` })
@@ -34,18 +38,19 @@ export async function POST(req: NextRequest) {
   if (error || !extracted) {
     const { data: lead } = await supabaseAdmin
       .from('inbox_leads')
-      .insert({ origin, raw_excerpt: raw.slice(0, 2000), extracted: {}, confidence: 'unverified', extraction_error: error ?? 'Extraction failed', source_url: sourceUrl })
+      .insert({ user_id: userId, origin, raw_excerpt: raw.slice(0, 2000), extracted: {}, confidence: 'unverified', extraction_error: error ?? 'Extraction failed', source_url: sourceUrl })
       .select('*')
       .single()
     return NextResponse.json({ leadId: lead?.id, error: error ?? 'Extraction failed' })
   }
 
   const dedupeMatchId = await findDedupeMatch(extracted.title ?? '', sourceUrl)
-  const verdictPreview = await previewDiagnosis(extracted, sourceUrl)
+  const verdictPreview = await previewDiagnosis(extracted, sourceUrl, userId)
 
   const { data: lead, error: insertErr } = await supabaseAdmin
     .from('inbox_leads')
     .insert({
+      user_id: userId,
       origin,
       raw_excerpt: raw.slice(0, 2000),
       extracted,

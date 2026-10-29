@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { SYSTEM_PROMPTS } from '@/lib/profile'
 import { supabaseAdmin } from '@/lib/supabase'
+import { getSessionUserId } from '@/lib/auth-server'
 import { TOOL_DEFS, WRITE_TOOLS, executeReadTool, executeWriteTool, humanizeWriteAction, type ToolName } from '@/lib/command-tools'
 
 // Node.js runtime (Fluid Compute) — dropped the old `edge` export. Nothing
@@ -44,18 +45,23 @@ async function callCometAPI(messages: unknown[], tools?: unknown[]) {
 }
 
 export async function GET() {
-  const { data, error } = await supabaseAdmin.from('command_log').select('*').order('created_at', { ascending: false }).limit(50)
+  const userId = await getSessionUserId().catch(() => null)
+  if (!userId) return NextResponse.json({ error: 'Unauthenticated' }, { status: 401 })
+  const { data, error } = await supabaseAdmin.from('command_log').select('*').eq('user_id', userId).order('created_at', { ascending: false }).limit(50)
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
   return NextResponse.json({ history: data })
 }
 
 export async function POST(req: NextRequest) {
+  const userId = await getSessionUserId().catch(() => null)
+  if (!userId) return NextResponse.json({ error: 'Unauthenticated' }, { status: 401 })
+
   try {
     const body = await req.json()
 
     // ---- Confirm/reject a pending write from a previous /command turn ----
     if (body.confirmCommandLogId) {
-      const { data: log, error: logErr } = await supabaseAdmin.from('command_log').select('*').eq('id', body.confirmCommandLogId).single()
+      const { data: log, error: logErr } = await supabaseAdmin.from('command_log').select('*').eq('id', body.confirmCommandLogId).eq('user_id', userId).single()
       if (logErr || !log) return NextResponse.json({ error: 'Command not found' }, { status: 404 })
       if (log.status !== 'pending') return NextResponse.json({ error: `Command is already ${log.status}` }, { status: 409 })
 
@@ -67,7 +73,7 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ status: 'rejected' })
       }
 
-      const result = await executeWriteTool(pending.tool, pending.input)
+      const result = await executeWriteTool(pending.tool, pending.input, userId)
       const actions = [...(log.actions as unknown[]), { type: 'write_executed', tool: pending.tool, input: pending.input, output: result }]
       await supabaseAdmin.from('command_log').update({ status: 'confirmed', confirmed_at: new Date().toISOString(), actions }).eq('id', log.id)
       return NextResponse.json({ status: 'confirmed', result })
@@ -99,7 +105,7 @@ export async function POST(req: NextRequest) {
     const command = String(body.command ?? '')
     if (!command) return NextResponse.json({ error: 'Missing command' }, { status: 400 })
 
-    const { data: log } = await supabaseAdmin.from('command_log').insert({ prompt: command, status: 'pending', actions: [] }).select('*').single()
+    const { data: log } = await supabaseAdmin.from('command_log').insert({ user_id: userId, prompt: command, status: 'pending', actions: [] }).select('*').single()
     if (!log) return NextResponse.json({ error: 'Could not create command_log row' }, { status: 500 })
 
     const messages: Array<{ role: string; content: unknown }> = [{ role: 'user', content: command }]
@@ -138,7 +144,7 @@ export async function POST(req: NextRequest) {
       messages.push({ role: 'assistant', content: response.content })
       const toolResults = []
       for (const call of toolUses) {
-        const output = await executeReadTool(call.name, call.input)
+        const output = await executeReadTool(call.name, call.input, userId)
         actions.push({ type: 'tool_call', tool: call.name, input: call.input, output })
         toolResults.push({ type: 'tool_result', tool_use_id: call.id, content: JSON.stringify(output) })
       }

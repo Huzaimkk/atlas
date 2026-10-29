@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase'
+import { getSessionUserId } from '@/lib/auth-server'
 import { TOOL_DEFS, WRITE_TOOLS, executeReadTool, humanizeWriteAction, type ToolName } from '@/lib/command-tools'
 
 // The structured palette (Phase B — feature-flagged natural-language path
@@ -12,9 +13,11 @@ import { TOOL_DEFS, WRITE_TOOLS, executeReadTool, humanizeWriteAction, type Tool
 
 /** Autocomplete data for the typed forms — opportunity titles + their requirement labels, and the current profile's pending_items. */
 export async function GET() {
+  const userId = await getSessionUserId().catch(() => null)
+  if (!userId) return NextResponse.json({ error: 'Unauthenticated' }, { status: 401 })
   const [{ data: opportunities }, { data: profile }] = await Promise.all([
     supabaseAdmin.from('opportunities').select('id, title, requirements').order('title', { ascending: true }),
-    supabaseAdmin.from('profile_snapshots').select('pending_items').eq('is_current', true).maybeSingle(),
+    supabaseAdmin.from('profile_snapshots').select('pending_items').eq('is_current', true).eq('user_id', userId).maybeSingle(),
   ])
   return NextResponse.json({
     opportunities: (opportunities ?? []).map((o) => ({
@@ -27,6 +30,9 @@ export async function GET() {
 }
 
 export async function POST(req: NextRequest) {
+  const userId = await getSessionUserId().catch(() => null)
+  if (!userId) return NextResponse.json({ error: 'Unauthenticated' }, { status: 401 })
+
   const body = await req.json()
   const tool = body.tool as ToolName
   const input = (body.input ?? {}) as Record<string, unknown>
@@ -38,7 +44,7 @@ export async function POST(req: NextRequest) {
   if (WRITE_TOOLS.has(tool)) {
     const { data: log, error } = await supabaseAdmin
       .from('command_log')
-      .insert({ prompt: `Palette: ${tool}`, status: 'pending', actions: [{ type: 'pending_write', tool, input }] })
+      .insert({ user_id: userId, prompt: `Palette: ${tool}`, status: 'pending', actions: [{ type: 'pending_write', tool, input }] })
       .select('*')
       .single()
     if (error || !log) return NextResponse.json({ error: error?.message ?? 'Could not create command_log row' }, { status: 500 })
@@ -49,7 +55,7 @@ export async function POST(req: NextRequest) {
     })
   }
 
-  const result = await executeReadTool(tool, input)
-  await supabaseAdmin.from('command_log').insert({ prompt: `Palette: ${tool}`, status: 'read_only', actions: [{ type: 'tool_call', tool, input, output: result }] })
+  const result = await executeReadTool(tool, input, userId)
+  await supabaseAdmin.from('command_log').insert({ user_id: userId, prompt: `Palette: ${tool}`, status: 'read_only', actions: [{ type: 'tool_call', tool, input, output: result }] })
   return NextResponse.json({ done: true, result })
 }
