@@ -74,6 +74,27 @@ export interface EligibilityRule {
   rule_type: RuleType
   source_quote: string
   source_url: string
+  /**
+   * Only meaningful when rule_type is 'discretionary'. true when the gap
+   * is OUR ignorance — the programme's own page is simply silent on this
+   * ("doesn't state whether...", "not published") — vs false when the
+   * page states an actual (if soft) preference ("typically requires...",
+   * "strongly recommended"). Backfilled once (scripts/backfill-actions-
+   * and-verification.mjs) and read as-is by diagnoseOne — never
+   * re-derived from rule_text at diagnosis time. Drives
+   * Verdict.verification_required, which stays orthogonal to the verdict
+   * type itself (a row can be both GAP and verification_required).
+   */
+  verification_only?: boolean
+  /**
+   * The concrete, curated action that resolves this rule's gap when it
+   * differs from rule_text itself — e.g. several schools' differently-
+   * worded English rules all resolving to "Sit IELTS, score ≥ 7.0".
+   * Stored per-row so the mapping is part of the engine's own data, not
+   * recomputed by pattern-matching label text at render time. Falls back
+   * to rule_text when uncurated.
+   */
+  satisfying_action?: string
 }
 
 export type RequirementType =
@@ -93,7 +114,18 @@ export interface Requirement {
   type: RequirementType
   label: string
   count?: number
+  /**
+   * Frozen at ingest time. For a document-shaped type (one of
+   * DOCUMENT_INVENTORY_KEY's keys in lib/application-documents.ts),
+   * diagnoseOne now resolves satisfaction live against the profile's
+   * document_inventory instead of trusting this flag — see that file and
+   * lib/diagnostic-engine.ts. Still authoritative for every other type
+   * (gre/language_test/aptitude_test/other), which document_inventory has
+   * no field for.
+   */
   satisfied: boolean
+  /** Same curated-action pattern as EligibilityRule.satisfying_action — falls back to label when uncurated. */
+  satisfying_action?: string
 }
 
 export interface Opportunity {
@@ -183,6 +215,16 @@ export interface Verdict {
   computed_at: string
   /** First became READY, carried forward across re-diagnoses — unlike computed_at this does NOT reset every run. Null unless type === 'READY'. See migration 0010. */
   ready_since?: string | null
+  /**
+   * Orthogonal to `type` — never folded into it, never promoted to READY.
+   * True when at least one of this row's gaps is page-silence ("not
+   * stated on the official page") rather than a real missing credential —
+   * a row can be both GAP (something's actually missing) AND
+   * verification_required (something else is merely unconfirmed) at
+   * once. "N verified READY · M pending verification" must stay two
+   * numbers everywhere a count is shown. See migration 0013.
+   */
+  verification_required: boolean
 }
 
 /** Aggregated row for the Gap Queue (spec §5.3) — one per distinct gap across the whole pool. */
@@ -190,6 +232,27 @@ export interface AggregatedGap {
   id: string
   type: GapType
   label: string
+  unblock_count: number
+  opportunity_ids: string[]
+  time_estimate: string
+  cost_estimate: string
+  priority: 'start_now' | 'agent_assisted' | 'low_priority'
+}
+
+/**
+ * Aggregated row for the Home enhancer — one per distinct ACTION, not per
+ * requirement label. Several rows' differently-worded (and genuinely
+ * different) requirements can share one satisfying action — e.g. "sit
+ * IELTS 7.0" clears Berkeley's TOEFL/IELTS-only rule and UCSD's
+ * Duolingo-120-or-IELTS-7 rule at once. Sourced from the `action_queue`
+ * view (migration 0013), distinct from AggregatedGap/gap_queue, which the
+ * Gap Queue page keeps using unmerged, per the "Requirement" layer never
+ * collapsing (see lib/diagnostic-engine.ts's action_label).
+ */
+export interface AggregatedAction {
+  id: string
+  type: GapType
+  action_label: string
   unblock_count: number
   opportunity_ids: string[]
   time_estimate: string
@@ -210,6 +273,8 @@ export interface PendingItem {
 
 export interface ProfileSnapshot {
   version: number
+  /** Per-user display ordinal (migration 0012) — show this to the user, never the global `version`, which leaks system-wide usage. */
+  user_version?: number
   created_at: string
   identity: {
     citizenship: string

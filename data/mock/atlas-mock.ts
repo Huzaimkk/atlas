@@ -7,6 +7,7 @@
 // data/inbox/cv/profile-snapshot-v5.md, for that.
 
 import type {
+  AggregatedAction,
   AggregatedGap,
   Application,
   ArchiveEntry,
@@ -303,8 +304,8 @@ export const mockOpportunities: Opportunity[] = [
 ]
 
 export const mockVerdicts: Verdict[] = [
-  { opportunity_id: 'mats-winter-2027', type: 'LATE_WINDOW', snapshot_version: 3, computed_at: '2026-09-15', reason: 'Late applications accepted by emailing applications@matsprogram.org' },
-  { opportunity_id: 'mats-residency', type: 'READY', snapshot_version: 3, computed_at: '2026-09-15', fit_score: 91, ready_since: '2026-09-30' },
+  { opportunity_id: 'mats-winter-2027', type: 'LATE_WINDOW', snapshot_version: 3, computed_at: '2026-09-15', reason: 'Late applications accepted by emailing applications@matsprogram.org', verification_required: false },
+  { opportunity_id: 'mats-residency', type: 'READY', snapshot_version: 3, computed_at: '2026-09-15', fit_score: 91, ready_since: '2026-09-30', verification_required: false },
   {
     opportunity_id: 'gates-cambridge',
     type: 'GAP',
@@ -312,6 +313,7 @@ export const mockVerdicts: Verdict[] = [
     computed_at: '2026-09-15',
     fit_score: 74,
     gaps: [{ type: 'endorsement', label: '2× letters of recommendation', time_estimate: '~4 weeks', cost_estimate: 'free' }],
+    verification_required: false,
   },
   {
     opportunity_id: 'mitacs-globalink',
@@ -322,6 +324,7 @@ export const mockVerdicts: Verdict[] = [
     reason: 'Requires enrolled full-time undergraduate status with semesters remaining — current degree level is graduate',
     blocking_rule_quote: 'Applicants must be currently enrolled full-time undergraduate students with 1 to 3 semesters remaining after the internship',
     blocking_rule_source_url: 'https://mitacs.ca/en/programs/globalink/globalink-research-internship',
+    verification_required: false,
   },
   {
     opportunity_id: 'lab-fang-uf',
@@ -334,8 +337,9 @@ export const mockVerdicts: Verdict[] = [
       { type: 'endorsement', label: '2× letters of recommendation', time_estimate: '~4 weeks', cost_estimate: 'free' },
       { type: 'contact', label: 'No prior email exchange with the PI', time_estimate: '~1 day', cost_estimate: 'free' },
     ],
+    verification_required: false,
   },
-  { opportunity_id: 'gta-uwaterloo', type: 'READY', snapshot_version: 3, computed_at: '2026-09-15', fit_score: 82 },
+  { opportunity_id: 'gta-uwaterloo', type: 'READY', snapshot_version: 3, computed_at: '2026-09-15', fit_score: 82, verification_required: false },
   {
     opportunity_id: 'daad-epos',
     type: 'NOT_YET_OPEN',
@@ -343,17 +347,19 @@ export const mockVerdicts: Verdict[] = [
     computed_at: '2026-09-15',
     fit_score: 79,
     gaps: [{ type: 'credential', label: 'IELTS 6.5', time_estimate: '~3 weeks', cost_estimate: '~$250' }],
+    verification_required: false,
   },
-  { opportunity_id: 'rhodes', type: 'NOT_YET_OPEN', snapshot_version: 3, computed_at: '2026-09-15' },
+  { opportunity_id: 'rhodes', type: 'NOT_YET_OPEN', snapshot_version: 3, computed_at: '2026-09-15', verification_required: false },
   {
     opportunity_id: 'neurips-2026-cfp',
     type: 'EXPIRED',
     snapshot_version: 3,
     computed_at: '2026-09-15',
     gaps: [{ type: 'document', label: 'Camera-ready paper draft', time_estimate: '~1 week', cost_estimate: 'free' }],
+    verification_required: false,
   },
-  { opportunity_id: 'a16z-speedrun', type: 'IRRELEVANT', snapshot_version: 3, computed_at: '2026-09-15', reason: 'Founder track deselected — competes with academic track for the same hours' },
-  { opportunity_id: 'stanford-biodesign', type: 'EXPIRED', snapshot_version: 3, computed_at: '2026-09-15' },
+  { opportunity_id: 'a16z-speedrun', type: 'IRRELEVANT', snapshot_version: 3, computed_at: '2026-09-15', reason: 'Founder track deselected — competes with academic track for the same hours', verification_required: false },
+  { opportunity_id: 'stanford-biodesign', type: 'EXPIRED', snapshot_version: 3, computed_at: '2026-09-15', verification_required: false },
 ]
 
 export const mockAggregatedGaps: AggregatedGap[] = [
@@ -398,6 +404,20 @@ export const mockAggregatedGaps: AggregatedGap[] = [
     priority: 'agent_assisted',
   },
 ]
+
+// One-to-one with mockAggregatedGaps here (fixture, not real data) — the
+// real action_queue view often collapses several differently-worded
+// per-row requirements into one action; see lib/diagnostic-engine.ts.
+export const mockActions: AggregatedAction[] = mockAggregatedGaps.map((g) => ({
+  id: g.id,
+  type: g.type,
+  action_label: g.label,
+  unblock_count: g.unblock_count,
+  opportunity_ids: g.opportunity_ids,
+  time_estimate: g.time_estimate,
+  cost_estimate: g.cost_estimate,
+  priority: g.priority,
+}))
 
 export const mockWatchlist: WatchlistLab[] = [
   {

@@ -21,6 +21,7 @@ import {
   mockOpportunities,
   mockVerdicts,
   mockAggregatedGaps,
+  mockActions,
   mockWatchlist,
   mockInbox,
   mockProfile,
@@ -65,6 +66,7 @@ const EMPTY: AtlasData = {
   opportunities: [],
   verdicts: [],
   gaps: [],
+  actions: [],
   watchlist: [],
   inbox: [],
   profile: null,
@@ -81,7 +83,10 @@ const EMPTY: AtlasData = {
  * previews the fixture in data/mock/atlas-mock.ts instead; it defaults
  * off, so the real pool is what's shown by default.
  */
-export function AppShell({ realData }: { realData?: AtlasData }) {
+// `email` is accepted (app/dashboard/page.tsx already passes it) but not
+// yet wired to anything in this component — pre-existing, unrelated to
+// this change; left as a typed no-op rather than silently dropped.
+export function AppShell({ realData, email: _email }: { realData?: AtlasData; email?: string | null }) {
   const [active, setActive] = useState<ViewId>('today')
   const [preview, setPreview] = useState(false)
 
@@ -89,6 +94,7 @@ export function AppShell({ realData }: { realData?: AtlasData }) {
   const opportunities = preview ? mockOpportunities : live.opportunities
   const verdicts = preview ? mockVerdicts : live.verdicts
   const gaps = preview ? mockAggregatedGaps : live.gaps
+  const actions = preview ? mockActions : live.actions
   const watchlist = preview ? mockWatchlist : live.watchlist
   const inbox = preview ? mockInbox : live.inbox
   const archive = preview ? mockArchive : live.archive
@@ -194,7 +200,7 @@ export function AppShell({ realData }: { realData?: AtlasData }) {
               missedDeadlines={missedDeadlines}
             />
           )}
-          {active === 'home' && <HomeView profile={profile} opportunities={opportunities} verdicts={verdicts} />}
+          {active === 'home' && <HomeView profile={profile} opportunities={opportunities} verdicts={verdicts} actions={actions} />}
           {active === 'action-queue' && <ActionQueueView opportunities={opportunities} verdicts={verdicts} />}
           {active === 'applications' && <ApplicationsView opportunities={opportunities} applications={applications} profile={profile} />}
           {active === 'gap-queue' && <GapQueueView gaps={gaps} />}

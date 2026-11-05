@@ -11,7 +11,7 @@ import { createServerClient } from '@supabase/ssr'
 // Deliberately NOT cached across a request — a Server Component or route
 // handler that needs the id more than once should call this once and pass
 // the result down, not rely on this doing it for them.
-export async function getSessionUserId(): Promise<string> {
+async function getSessionUserRaw() {
   const cookieStore = await cookies()
   const supabase = createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -25,5 +25,15 @@ export async function getSessionUserId(): Promise<string> {
   )
   const { data, error } = await supabase.auth.getUser()
   if (error || !data.user) throw new Error('UNAUTHENTICATED')
-  return data.user.id
+  return data.user
+}
+
+export async function getSessionUserId(): Promise<string> {
+  return (await getSessionUserRaw()).id
+}
+
+/** Same session read as getSessionUserId, but returns the email too — for Settings, which is the one surface that needs to show it. */
+export async function getSessionUser(): Promise<{ id: string; email: string | null }> {
+  const user = await getSessionUserRaw()
+  return { id: user.id, email: user.email ?? null }
 }

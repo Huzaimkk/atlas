@@ -5,7 +5,10 @@ import type { ProfileSnapshot, Requirement, RequiredDocument, RequirementType } 
 // are credentials (tracked as profile pending_items, not documents) and
 // 'other' is too free-form to map; those seed with no inventory_status and
 // rely purely on the opportunity's own requirements.satisfied flag.
-const INVENTORY_KEY: Partial<Record<RequirementType, keyof ProfileSnapshot['document_inventory']>> = {
+// Exported for lib/diagnostic-engine.ts, which now resolves document-type
+// requirements against document_inventory at diagnosis time too — same
+// mapping, single source of truth.
+export const INVENTORY_KEY: Partial<Record<RequirementType, keyof ProfileSnapshot['document_inventory']>> = {
   sop: 'sop',
   research_proposal: 'research_statement',
   cv: 'cv',

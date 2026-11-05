@@ -3,6 +3,7 @@ import { supabaseAdmin } from '@/lib/supabase'
 import { computeGapPriority, daysBetween, daysUntil } from '@/lib/atlas-format'
 import { diagnoseOne, loadProfileFacts } from '@/lib/diagnostic-engine'
 import type {
+  AggregatedAction,
   AggregatedGap,
   Application,
   ArchiveEntry,
@@ -20,6 +21,8 @@ export interface AtlasData {
   opportunities: Opportunity[]
   verdicts: Verdict[]
   gaps: AggregatedGap[]
+  /** Home's ProfileEnhancer only — grouped by satisfying action, not by verbatim requirement label. See migration 0013. */
+  actions: AggregatedAction[]
   watchlist: WatchlistLab[]
   inbox: InboxLead[]
   profile: ProfileSnapshot | null
@@ -89,6 +92,7 @@ export async function fetchAtlasData(userId: string): Promise<AtlasData> {
     { data: opportunities },
     { data: verdicts },
     { data: gapQueue },
+    { data: actionQueue },
     { data: profile },
     { data: inboxRows },
     { data: applications },
@@ -98,6 +102,7 @@ export async function fetchAtlasData(userId: string): Promise<AtlasData> {
     supabaseAdmin.from('opportunities').select('*'),
     supabaseAdmin.from('verdicts').select('*').eq('user_id', userId),
     supabaseAdmin.from('gap_queue').select('*').eq('user_id', userId),
+    supabaseAdmin.from('action_queue').select('*').eq('user_id', userId),
     supabaseAdmin.from('profile_snapshots').select('*').eq('is_current', true).eq('user_id', userId).maybeSingle(),
     supabaseAdmin.from('inbox_leads').select('*').eq('user_id', userId).neq('confidence', 'resolved').order('dropped_at', { ascending: false }),
     supabaseAdmin.from('applications').select('*').eq('user_id', userId),
@@ -116,20 +121,44 @@ export async function fetchAtlasData(userId: string): Promise<AtlasData> {
     priority: computeGapPriority(g.type, g.unblock_count),
   }))
 
+  const actions: AggregatedAction[] = (actionQueue ?? []).map((a) => ({
+    id: `${a.type}:${a.action_label}`,
+    type: a.type,
+    action_label: a.action_label,
+    unblock_count: a.unblock_count,
+    opportunity_ids: a.opportunity_ids,
+    time_estimate: a.time_estimate ?? '',
+    cost_estimate: a.cost_estimate ?? '',
+    priority: computeGapPriority(a.type, a.unblock_count),
+  }))
+
   const verdictByOpportunityId = new Map((verdicts ?? []).map((v) => [v.opportunity_id, v]))
+  // Withdrawn (item 4 — decline) takes priority over an EXPIRED verdict:
+  // an opportunity someone explicitly declined belongs in Archive for that
+  // reason even if it also happens to have since expired.
+  const withdrawnOppIds = new Set((applications ?? []).filter((a) => a.status === 'withdrawn').map((a) => a.opportunity_id))
+  const applicationByOpportunityId = new Map((applications ?? []).map((a) => [a.opportunity_id, a]))
   const archive: ArchiveEntry[] = (opportunities ?? [])
-    .filter((o) => verdictByOpportunityId.get(o.id)?.type === 'EXPIRED')
-    .map((o) => ({
-      opportunity: o,
-      verdict: verdictByOpportunityId.get(o.id)!,
-      archived_reason: 'expired' as const,
-      archived_at: verdictByOpportunityId.get(o.id)!.computed_at,
-    }))
+    .filter((o) => withdrawnOppIds.has(o.id) || verdictByOpportunityId.get(o.id)?.type === 'EXPIRED')
+    .map((o): ArchiveEntry | null => {
+      const verdict = verdictByOpportunityId.get(o.id)
+      const withdrawn = withdrawnOppIds.has(o.id)
+      return verdict
+        ? {
+            opportunity: o,
+            verdict,
+            archived_reason: withdrawn ? ('withdrawn' as const) : ('expired' as const),
+            archived_at: withdrawn ? applicationByOpportunityId.get(o.id)!.status_changed_at : verdict.computed_at,
+          }
+        : null
+    })
+    .filter((e): e is ArchiveEntry => e !== null)
 
   return {
     opportunities: opportunities ?? [],
     verdicts: verdicts ?? [],
     gaps,
+    actions,
     watchlist: [], // Channel C (Phase 6) not built yet
     inbox: (inboxRows ?? []).map((r) => ({
       id: r.id,

@@ -16,8 +16,8 @@ const jetbrainsMono = JetBrains_Mono({
 })
 
 export const metadata: Metadata = {
-  title: 'Atlas — Diagnostic engine for academic & research outreach',
-  description: 'Personal PhD, fellowship, and research-outreach command center for Huzaim Akhtar, CTO @ ClinCell',
+  title: 'Atlas — a position, not a list of links',
+  description: 'Atlas checks every funded PhD, scholarship, and fellowship in the pool against your actual profile, and tells you exactly what is blocking you — with the source quoted.',
 }
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

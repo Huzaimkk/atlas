@@ -1,6 +1,7 @@
 import 'server-only'
 import { supabaseAdmin } from '@/lib/supabase'
 import { extractFingerprintKeywords, overlapScore, type FingerprintKeywords } from '@/lib/fingerprint'
+import { INVENTORY_KEY } from '@/lib/application-documents'
 import type { EligibilityRule, GapClosureCause, GapType, Opportunity, ProfileSnapshot, RequirementType, VerdictType } from '@/types/atlas'
 
 // Same engine Phase 4's one-off script used, promoted to a reusable module
@@ -127,6 +128,8 @@ export interface ProfileFacts {
   postDegreeHours: number
   yearsOfEducation: number
   fingerprintKeywords: FingerprintKeywords
+  /** Resolves a document-type Requirement live at diagnosis time (below) instead of trusting its frozen per-row `satisfied` flag. */
+  documentInventory: ProfileSnapshot['document_inventory'] | null
 }
 
 export async function loadProfileFacts(snapshot: ProfileSnapshot & { id: string }, userId: string): Promise<ProfileFacts> {
@@ -139,6 +142,7 @@ export async function loadProfileFacts(snapshot: ProfileSnapshot & { id: string 
     postDegreeHours: postDegreeHours ?? 0,
     yearsOfEducation: snapshot.identity.years_of_education,
     fingerprintKeywords: extractFingerprintKeywords(snapshot.research_fingerprint),
+    documentInventory: snapshot.document_inventory ?? null,
   }
 }
 
@@ -186,8 +190,19 @@ export interface DiagnosisResult {
   blocking_rule_quote?: string
   blocking_rule_source_url?: string
   fit_score: number | null
-  gaps: { type: GapType; label: string }[]
+  gaps: { type: GapType; label: string; action_label: string }[]
+  /** See Verdict.verification_required (types/atlas.ts) — orthogonal to `type`, never promoted to READY. */
+  verification_required: boolean
 }
+
+// IRRELEVANT is a real VerdictType (migration 0001) and the UI already
+// renders it (lib/atlas-format.ts), but nothing below ever returns it —
+// there is no producing code path. A row that's genuinely out of
+// contention (wrong hemisphere, wrong season, deselected track) has no
+// way to land there; it just sits as GAP/READY forever. Known hole,
+// logged here rather than fixed — picking how a row gets marked
+// IRRELEVANT (a flag? a fifth bucket alongside verification_required?)
+// is a real design decision, not a one-line patch.
 
 export function diagnoseOne(opp: Opportunity, facts: ProfileFacts): DiagnosisResult {
   for (const rule of (opp.eligibility_rules ?? []) as (EligibilityRule & { check?: EligibilityCheck })[]) {
@@ -202,43 +217,65 @@ export function diagnoseOne(opp: Opportunity, facts: ProfileFacts): DiagnosisRes
         blocking_rule_source_url: rule.source_url,
         fit_score: null,
         gaps: [],
+        verification_required: false,
       }
     }
   }
 
   if (opp.status === 'expired' || opp.status === 'paused') {
     if (LATE_WINDOW_TITLES.has(opp.title)) {
-      return { type: 'LATE_WINDOW', reason: 'Late applications accepted — see the programme\'s own late-application route.', fit_score: null, gaps: [] }
+      return { type: 'LATE_WINDOW', reason: 'Late applications accepted — see the programme\'s own late-application route.', fit_score: null, gaps: [], verification_required: false }
     }
-    return { type: 'EXPIRED', fit_score: null, gaps: [] }
+    return { type: 'EXPIRED', fit_score: null, gaps: [], verification_required: false }
   }
 
   if (opp.status === 'not_yet_open') {
-    return { type: 'NOT_YET_OPEN', fit_score: fitScore(opp.field_tags, facts.fingerprintKeywords), gaps: [] }
+    return { type: 'NOT_YET_OPEN', fit_score: fitScore(opp.field_tags, facts.fingerprintKeywords), gaps: [], verification_required: false }
   }
 
-  const gaps: { type: GapType; label: string }[] = []
+  const gaps: { type: GapType; label: string; action_label: string }[] = []
+  let verification_required = false
+
   for (const req of opp.requirements ?? []) {
-    if (!req.satisfied) gaps.push({ type: REQUIREMENT_GAP_TYPE[req.type] ?? 'document', label: req.label })
+    // Document-shaped requirements (CV, SOP, transcripts, ...) resolve
+    // live against document_inventory instead of the frozen per-row
+    // `satisfied` flag — a document marked 'ready' in the profile now
+    // actually closes the gap everywhere it appears, instead of needing
+    // every opportunity's own row hand-edited. Everything else (gre,
+    // language_test, aptitude_test, other) has no document_inventory
+    // field to check against and keeps using its own stored flag.
+    const invKey = INVENTORY_KEY[req.type]
+    const satisfied = invKey ? facts.documentInventory?.[invKey] === 'ready' : req.satisfied
+    if (!satisfied) gaps.push({ type: REQUIREMENT_GAP_TYPE[req.type] ?? 'document', label: req.label, action_label: req.satisfying_action ?? req.label })
   }
   const acceptsBachelor = (opp.degree_levels_accepted ?? []).length === 0 || opp.degree_levels_accepted.includes('undergraduate')
   if (!acceptsBachelor) {
     // Ambiguity, not a confirmed rejection (v5 §5.1) — never BLOCKED, and
     // never surfaced with the spec citation that justifies that rule;
-    // the user just needs a plain action.
-    gaps.push({ type: 'record', label: "Confirm this programme accepts bachelor's-only applicants — not stated on the official page" })
+    // the user just needs a plain action. This is page silence, not a
+    // real missing credential — always verification_required.
+    const label = "Confirm this programme accepts bachelor's-only applicants — not stated on the official page"
+    gaps.push({ type: 'record', label, action_label: label })
+    verification_required = true
   }
   for (const rule of opp.eligibility_rules ?? []) {
     // rule_text is already written as a plain-English condition (e.g.
     // "Typically requires a 2:1 undergraduate degree; IELTS typically
     // 6.0.") — it IS the action item, no internal framing needed on top.
-    if (rule.rule_type === 'discretionary') gaps.push({ type: 'record', label: rule.rule_text })
+    if (rule.rule_type !== 'discretionary') continue
+    gaps.push({ type: 'record', label: rule.rule_text, action_label: rule.satisfying_action ?? rule.rule_text })
+    // Only a rule explicitly curated as page-silence (see
+    // EligibilityRule.verification_only) sets the flag — a rule that
+    // states an actual soft preference ("typically requires...") is a
+    // real GAP per §5.7, not something to merely go verify.
+    if (rule.verification_only) verification_required = true
   }
 
   return {
     type: gaps.length > 0 ? 'GAP' : 'READY',
     fit_score: fitScore(opp.field_tags, facts.fingerprintKeywords),
     gaps,
+    verification_required,
   }
 }
 
@@ -292,6 +329,7 @@ export async function diagnoseOpportunity(opportunityId: string, userId: string)
       blocking_rule_source_url: result.blocking_rule_source_url,
       fit_score: result.fit_score,
       ready_since,
+      verification_required: result.verification_required,
     })
     .select('*')
     .single()
@@ -364,6 +402,7 @@ export async function diagnosePool(userId: string) {
     blocking_rule_source_url: result.blocking_rule_source_url,
     fit_score: result.fit_score,
     ready_since: computeReadySince(prevVerdictByOpp.get(opp.id), result.type),
+    verification_required: result.verification_required,
   }))
   const { data: insertedVerdicts, error: verdictErr } = await supabaseAdmin.from('verdicts').insert(verdictRows).select('id, opportunity_id')
   if (verdictErr) throw new Error(`Verdict batch insert failed: ${verdictErr.message}`)
