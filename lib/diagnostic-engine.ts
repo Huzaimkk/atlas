@@ -130,6 +130,8 @@ export interface ProfileFacts {
   fingerprintKeywords: FingerprintKeywords
   /** Resolves a document-type Requirement live at diagnosis time (below) instead of trusting its frozen per-row `satisfied` flag. */
   documentInventory: ProfileSnapshot['document_inventory'] | null
+  /** ISO date, computed once per diagnosis run — what Requirement.valid_until is checked against, same "compute against today" pattern as postDegreeHours. */
+  today: string
 }
 
 export async function loadProfileFacts(snapshot: ProfileSnapshot & { id: string }, userId: string): Promise<ProfileFacts> {
@@ -143,6 +145,7 @@ export async function loadProfileFacts(snapshot: ProfileSnapshot & { id: string 
     yearsOfEducation: snapshot.identity.years_of_education,
     fingerprintKeywords: extractFingerprintKeywords(snapshot.research_fingerprint),
     documentInventory: snapshot.document_inventory ?? null,
+    today: new Date().toISOString().slice(0, 10),
   }
 }
 
@@ -243,9 +246,13 @@ export function diagnoseOne(opp: Opportunity, facts: ProfileFacts): DiagnosisRes
     // actually closes the gap everywhere it appears, instead of needing
     // every opportunity's own row hand-edited. Everything else (gre,
     // language_test, aptitude_test, other) has no document_inventory
-    // field to check against and keeps using its own stored flag.
+    // field to check against and keeps using its own stored flag — except
+    // that a stored `satisfied: true` stops counting once valid_until has
+    // passed (same "check against today" treatment as postDegreeHours),
+    // for credentials that expire: Duolingo/IELTS/TOEFL/GRE/HAT.
     const invKey = INVENTORY_KEY[req.type]
-    const satisfied = invKey ? facts.documentInventory?.[invKey] === 'ready' : req.satisfied
+    const expired = !!req.valid_until && req.valid_until < facts.today
+    const satisfied = invKey ? facts.documentInventory?.[invKey] === 'ready' : req.satisfied && !expired
     if (!satisfied) gaps.push({ type: REQUIREMENT_GAP_TYPE[req.type] ?? 'document', label: req.label, action_label: req.satisfying_action ?? req.label })
   }
   const acceptsBachelor = (opp.degree_levels_accepted ?? []).length === 0 || opp.degree_levels_accepted.includes('undergraduate')

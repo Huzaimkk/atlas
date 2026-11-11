@@ -126,6 +126,15 @@ export interface Requirement {
   satisfied: boolean
   /** Same curated-action pattern as EligibilityRule.satisfying_action — falls back to label when uncurated. */
   satisfying_action?: string
+  /**
+   * ISO date. For a credential with a validity window (Duolingo, IELTS,
+   * TOEFL, GRE, HAT, ...), diagnoseOne checks this against today the same
+   * way post_degree_hours is checked — never a frozen boolean. Past this
+   * date, `satisfied` stops counting regardless of its stored value.
+   * Absent for requirement types with no expiry (documents, LORs) and for
+   * any credential that hasn't actually been sat yet.
+   */
+  valid_until?: string
 }
 
 export interface Opportunity {

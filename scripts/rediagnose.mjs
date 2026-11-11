@@ -93,7 +93,8 @@ function diagnoseOne(opp, facts) {
   let verification_required = false
   for (const req of opp.requirements ?? []) {
     const invKey = INVENTORY_KEY[req.type]
-    const satisfied = invKey ? facts.documentInventory?.[invKey] === 'ready' : req.satisfied
+    const expired = !!req.valid_until && req.valid_until < facts.today
+    const satisfied = invKey ? facts.documentInventory?.[invKey] === 'ready' : req.satisfied && !expired
     if (!satisfied) gaps.push({ type: REQUIREMENT_GAP_TYPE[req.type] ?? 'document', label: req.label, action_label: req.satisfying_action ?? req.label })
   }
   const acceptsBachelor = (opp.degree_levels_accepted ?? []).length === 0 || opp.degree_levels_accepted.includes('undergraduate')
@@ -129,6 +130,7 @@ async function main() {
     yearsOfEducation: snapshot.identity.years_of_education,
     fingerprintKeywords: extractFingerprintKeywords(snapshot.research_fingerprint),
     documentInventory: snapshot.document_inventory ?? null,
+    today: new Date().toISOString().slice(0, 10),
   }
 
   const { data: opportunities, error: oppErr } = await admin.from('opportunities').select('*')
