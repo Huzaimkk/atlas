@@ -4,6 +4,7 @@ import { useMemo, useState } from 'react'
 import { Compass } from 'lucide-react'
 import type { Category, Opportunity, Verdict } from '@/types/atlas'
 import { EmptyState } from '@/components/atlas/empty-state'
+import { PageHeader } from '@/components/atlas/page-header'
 import { VerdictBadge, TierBadge } from '@/components/atlas/verdict-badge'
 import { formatDeadline } from '@/lib/atlas-format'
 import { cn } from '@/lib/utils'
@@ -48,10 +49,7 @@ export function SectionsView({ opportunities, verdicts }: { opportunities: Oppor
 
   return (
     <div className="space-y-6">
-      <header>
-        <h1 className="text-2xl font-semibold tracking-tight">Browse by type</h1>
-        <p className="mt-1 text-sm text-muted-foreground">The pool, organized the way you'd actually look for it.</p>
-      </header>
+      <PageHeader title="Browse by type" description="The same opportunities, organised the way you would look for them." />
 
       <div className="flex flex-wrap gap-2">
         {SECTIONS.map((s) => (
@@ -61,7 +59,7 @@ export function SectionsView({ opportunities, verdicts }: { opportunities: Oppor
             className={cn(
               'rounded-full border px-3.5 py-1.5 text-sm transition-colors',
               active === s.slug
-                ? 'border-primary bg-primary/15 text-foreground'
+                ? 'border-foreground/40 bg-surface-2 text-foreground'
                 : 'border-border text-muted-foreground hover:border-border-strong hover:text-foreground'
             )}
           >
@@ -75,10 +73,10 @@ export function SectionsView({ opportunities, verdicts }: { opportunities: Oppor
         <EmptyState
           icon={Compass}
           title={`Nothing in ${section.label} yet`}
-          description="This section fills as the pool grows — nothing has landed here yet."
+          description="Nothing of this type has been verified yet."
         />
       ) : (
-        <ul className="divide-y divide-border rounded-lg border border-border">
+        <ul className="divide-y divide-border rounded-lg border border-border bg-surface">
           {rows.map((o) => {
             const v = verdictById.get(o.id)
             return (

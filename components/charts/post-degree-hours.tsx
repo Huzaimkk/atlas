@@ -28,15 +28,15 @@ export function PostDegreeHoursChart({ profile }: { profile: ProfileSnapshot | n
   const scaleMax = Math.max(maxThreshold * 1.08, current * 1.08)
 
   return (
-    <div className="space-y-4 rounded-lg border border-border p-4">
+    <div className="space-y-4 rounded-lg border border-border bg-surface p-5">
       <div className="flex items-baseline justify-between">
-        <h2 className="text-sm font-semibold text-foreground">Post-degree hours</h2>
+        <h2 className="text-sm font-medium text-foreground">Post-degree hours</h2>
         <p className="font-mono text-lg font-semibold text-foreground">{current.toLocaleString()}h</p>
       </div>
 
       <div className="relative h-2.5 w-full overflow-hidden rounded-full bg-surface-2">
         <motion.div
-          className="h-full rounded-full bg-primary"
+          className="h-full rounded-full bg-foreground/70"
           initial={{ width: 0 }}
           animate={{ width: `${Math.min(100, (current / scaleMax) * 100)}%` }}
           transition={{ duration: 0.4, ease: 'easeOut' }}

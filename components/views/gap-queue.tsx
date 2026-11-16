@@ -4,6 +4,7 @@ import { AnimatePresence, motion } from 'motion/react'
 import { Target } from 'lucide-react'
 import { GAP_TYPE_LABELS, type AggregatedGap } from '@/types/atlas'
 import { EmptyState } from '@/components/atlas/empty-state'
+import { PageHeader } from '@/components/atlas/page-header'
 import { GAP_PRIORITY_LABELS } from '@/lib/atlas-format'
 import { cn } from '@/lib/utils'
 
@@ -19,24 +20,19 @@ export function GapQueueView({ gaps }: { gaps: AggregatedGap[] }) {
 
   return (
     <div className="space-y-6">
-      <header>
-        <h1 className="text-2xl font-semibold tracking-tight">Gap Queue</h1>
-        <p className="mt-1 text-sm text-muted-foreground">
-          Every missing item, aggregated across the pool, ranked by how many rows it unblocks.
-        </p>
-      </header>
+      <PageHeader title="Gaps to close" description="Every missing item across all your opportunities, ranked by how many each one unlocks." />
 
       {sorted.length === 0 ? (
         <EmptyState
           icon={Target}
-          title="No gaps to close yet"
-          description="Once the pool is seeded and diagnosed against your profile, every missing requirement is aggregated here and ranked by unblock count — the top row is the single highest-leverage thing to do next."
+          title="No gaps to close"
+          description="When an opportunity you are eligible for is missing something, it is listed here, ranked by how many opportunities it unlocks. The top row is the single most useful thing to do next."
         />
       ) : (
         // Bar chart as the centrepiece — one axis (unblock_count), one hue
         // (this is a single series, not categories needing distinct colors),
         // shared scale across every bar so lengths are directly comparable.
-        <div className="space-y-1 rounded-lg border border-border p-4">
+        <div className="space-y-1 rounded-lg border border-border bg-surface p-5">
           <AnimatePresence initial={false}>
             {sorted.map((gap) => (
               <motion.div
@@ -55,7 +51,7 @@ export function GapQueueView({ gaps }: { gaps: AggregatedGap[] }) {
                       {GAP_TYPE_LABELS[gap.type]}
                     </span>
                   </div>
-                  <span className={cn('shrink-0 font-mono text-xs font-semibold uppercase tracking-wide', PRIORITY_STYLE[gap.priority])}>
+                  <span className={cn('shrink-0 text-xs font-medium', PRIORITY_STYLE[gap.priority])}>
                     {GAP_PRIORITY_LABELS[gap.priority]}
                   </span>
                 </div>
@@ -63,7 +59,7 @@ export function GapQueueView({ gaps }: { gaps: AggregatedGap[] }) {
                 <div className="flex items-center gap-2">
                   <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-surface-2">
                     <motion.div
-                      className="h-full rounded-full bg-primary"
+                      className="h-full rounded-full bg-foreground/70"
                       initial={{ width: 0 }}
                       animate={{ width: `${Math.max(3, (gap.unblock_count / max) * 100)}%` }}
                       transition={{ duration: 0.35, ease: 'easeOut' }}

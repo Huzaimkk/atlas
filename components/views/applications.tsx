@@ -5,9 +5,11 @@ import { useRouter } from 'next/navigation'
 import { ChevronDown, ChevronRight, ClipboardList } from 'lucide-react'
 import type { Application, ApplicationStatus, Opportunity, ProfileSnapshot, RequiredDocument } from '@/types/atlas'
 import { EmptyState } from '@/components/atlas/empty-state'
+import { PageHeader } from '@/components/atlas/page-header'
 import { seedRequiredDocuments } from '@/lib/application-documents'
 import { formatDeadline, APPLICATION_STATUS_LABELS, APPLICATION_STATUS_ORDER } from '@/lib/atlas-format'
 import { cn } from '@/lib/utils'
+import { useReadOnly } from '@/components/atlas/read-only'
 import {
   Select,
   SelectContent,
@@ -51,6 +53,7 @@ export function ApplicationsView({
   profile: ProfileSnapshot | null
 }) {
   const router = useRouter()
+  const readOnly = useReadOnly()
   const [, startTransition] = useTransition()
   const [statusFilter, setStatusFilter] = useState<ApplicationStatus | 'all'>('all')
   const [expanded, setExpanded] = useState<Set<string>>(new Set())
@@ -116,13 +119,7 @@ export function ApplicationsView({
 
   return (
     <div className="space-y-6">
-      <header>
-        <h1 className="text-2xl font-semibold tracking-tight">Applications</h1>
-        <p className="mt-1 text-sm text-muted-foreground">
-          Every row's own funnel — not_started → researching → drafting → submitted → interview → offer / rejected /
-          withdrawn, each change dated and logged.
-        </p>
-      </header>
+      <PageHeader title="Applications" description="Track each application from first look to decision. Every status change is dated." />
 
       <div className="flex items-center gap-2">
         <Select value={statusFilter} onValueChange={(v) => setStatusFilter(v as ApplicationStatus | 'all')}>
@@ -142,9 +139,9 @@ export function ApplicationsView({
       </div>
 
       {filtered.length === 0 ? (
-        <EmptyState icon={ClipboardList} title="No rows match this filter" description="Clear the status filter to see every row in the pool." />
+        <EmptyState icon={ClipboardList} title="Nothing at this stage" description="No application is at this status. Clear the filter to see all of them." />
       ) : (
-        <div className="overflow-hidden rounded-lg border border-border">
+        <div className="overflow-hidden rounded-lg border border-border bg-surface">
           <Table>
             <TableHeader>
               <TableRow>
@@ -185,7 +182,7 @@ export function ApplicationsView({
                         <Select
                           value={row.status}
                           onValueChange={(v) => changeStatus(row, v as ApplicationStatus)}
-                          disabled={isPending}
+                          disabled={readOnly || isPending}
                         >
                           <SelectTrigger size="sm" className="h-7 w-36 text-xs">
                             <SelectValue />
@@ -216,7 +213,7 @@ export function ApplicationsView({
                                 <input
                                   type="checkbox"
                                   checked={doc.satisfied}
-                                  disabled={isPending}
+                                  disabled={readOnly || isPending}
                                   onChange={() => toggleDocument(row, docs, doc)}
                                   className="size-3.5 accent-primary"
                                 />

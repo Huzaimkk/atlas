@@ -13,9 +13,11 @@ import {
   type VerdictType,
 } from '@/types/atlas'
 import { EmptyState } from '@/components/atlas/empty-state'
+import { PageHeader } from '@/components/atlas/page-header'
 import { VerdictBadge, TierBadge } from '@/components/atlas/verdict-badge'
 import { formatDeadline, formatFunding, STATUS_LABELS, hasAiWritingPolicy } from '@/lib/atlas-format'
 import { cn } from '@/lib/utils'
+import { useReadOnly } from '@/components/atlas/read-only'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import {
@@ -77,7 +79,8 @@ function sectionFor(opp: Opportunity, verdict: Verdict | undefined): SectionId {
   return 'live'
 }
 
-function DetailPanel({
+/** The full case for one opportunity: verdict, quoted rules, requirements, source link. Shared by every list that opens a row. */
+export function OpportunityDetail({
   opp,
   verdict,
   declined,
@@ -86,16 +89,18 @@ function DetailPanel({
 }: {
   opp: Opportunity
   verdict: Verdict | undefined
-  declined: boolean
-  declining: boolean
-  onDecline: () => void
+  declined?: boolean
+  declining?: boolean
+  /** Omit to hide the Decline control (read-only contexts). */
+  onDecline?: () => void
 }) {
+  const readOnly = useReadOnly()
   return (
     <div className="space-y-6">
       <div className="space-y-2">
         <div className="flex items-start justify-between gap-3">
           <div>
-            <p className="text-lg font-medium text-foreground">{opp.title}</p>
+            <p className="display text-xl text-foreground">{opp.title}</p>
             <p className="text-sm text-muted-foreground">{opp.institution}</p>
           </div>
           {verdict && <VerdictBadge verdict={verdict.type} className="shrink-0" />}
@@ -121,7 +126,7 @@ function DetailPanel({
             <div className="flex gap-2 rounded-md bg-background/60 p-3">
               <Quote className="size-3.5 shrink-0 text-faint-foreground" strokeWidth={1.75} />
               <div className="space-y-1">
-                <p className="font-mono text-2xs leading-relaxed text-muted-foreground">&ldquo;{verdict.blocking_rule_quote}&rdquo;</p>
+                <p className="source-quote">&ldquo;{verdict.blocking_rule_quote}&rdquo;</p>
                 {verdict.blocking_rule_source_url && (
                   <a
                     href={verdict.blocking_rule_source_url}
@@ -147,7 +152,7 @@ function DetailPanel({
 
       {opp.funding && (
         <div className="space-y-1">
-          <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Funding</h3>
+          <h3 className="text-sm font-medium text-foreground">Funding</h3>
           <p className="text-sm text-foreground">{formatFunding(opp.funding.stipend) || 'Not stated'}</p>
           {opp.funding.notes && <p className="text-xs text-muted-foreground">{opp.funding.notes}</p>}
         </div>
@@ -155,7 +160,7 @@ function DetailPanel({
 
       {opp.eligibility_rules.length > 0 && (
         <div className="space-y-2">
-          <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Eligibility rules</h3>
+          <h3 className="text-sm font-medium text-foreground">Eligibility rules</h3>
           <ul className="space-y-2">
             {opp.eligibility_rules.map((r, i) => (
               <li key={i} className="space-y-1 rounded-md border border-border p-3">
@@ -170,7 +175,7 @@ function DetailPanel({
                     {r.rule_type}
                   </span>
                 </div>
-                {r.source_quote && <p className="font-mono text-2xs text-faint-foreground">&ldquo;{r.source_quote}&rdquo;</p>}
+                {r.source_quote && <p className="source-quote text-sm">&ldquo;{r.source_quote}&rdquo;</p>}
               </li>
             ))}
           </ul>
@@ -179,7 +184,7 @@ function DetailPanel({
 
       {opp.requirements.length > 0 && (
         <div className="space-y-2">
-          <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Requirements</h3>
+          <h3 className="text-sm font-medium text-foreground">Requirements</h3>
           <ul className="space-y-1.5">
             {opp.requirements.map((r, i) => (
               <li key={i} className="flex items-center gap-2 text-sm">
@@ -200,10 +205,12 @@ function DetailPanel({
             </a>
           </Button>
         )}
-        <Button variant="outline" onClick={onDecline} disabled={declined || declining} className="shrink-0">
-          <X className="size-3.5" />
-          {declined ? 'Declined' : declining ? 'Declining…' : 'Decline'}
-        </Button>
+        {onDecline && (
+          <Button variant="outline" onClick={onDecline} disabled={readOnly || declined || declining} className="shrink-0">
+            <X className="size-3.5" />
+            {declined ? 'Declined' : declining ? 'Declining…' : 'Decline'}
+          </Button>
+        )}
       </div>
     </div>
   )
@@ -286,19 +293,13 @@ export function PoolView({
 
   return (
     <div className="space-y-6">
-      <header>
-        <h1 className="text-2xl font-semibold tracking-tight">Pool</h1>
-        <p className="mt-1 text-sm text-muted-foreground">
-          Every opportunity across all nine categories, grouped by where it stands — nothing hidden, everything
-          reachable. Click a row for the full case: eligibility rules, quotes, sources.
-        </p>
-      </header>
+      <PageHeader title="All opportunities" description="Everything Atlas tracks, grouped by where it stands for you. Nothing is hidden: open any row for its rules, the quotes behind them, and their sources." />
 
       {opportunities.length === 0 ? (
         <EmptyState
           icon={Database}
-          title="The pool is empty"
-          description="Nothing has been ingested yet. The pool fills from Channel B sweeps, Channel C lab-page monitoring, and manual drops in the Inbox — none of that has run yet."
+          title="No opportunities yet"
+          description="Opportunities appear here once they have been verified against their official pages. You can add one yourself from the Inbox."
         />
       ) : (
         <div className="space-y-5">
@@ -363,7 +364,7 @@ export function PoolView({
           </div>
 
           {filtered.length === 0 ? (
-            <EmptyState icon={Search} title="No matches" description="No row matches this search and filter combination." />
+            <EmptyState icon={Search} title="No matches" description="Nothing matches this search and these filters. Clear one to widen the list." />
           ) : (
             SECTIONS.map((section) => {
               const rows = bySection[section.id]
@@ -379,7 +380,7 @@ export function PoolView({
                     ) : (
                       <ChevronDown className="size-3.5 text-muted-foreground" strokeWidth={1.75} />
                     )}
-                    <h2 className="text-xs font-semibold uppercase tracking-wide text-foreground">{section.label}</h2>
+                    <h2 className="text-sm font-medium text-foreground">{section.label}</h2>
                     <span className="font-mono text-2xs text-muted-foreground">{rows.length}</span>
                     <span className="hidden text-2xs text-faint-foreground sm:inline">{section.description}</span>
                   </button>
@@ -388,17 +389,18 @@ export function PoolView({
                     (rows.length === 0 ? (
                       <p className="pl-5 text-xs text-faint-foreground">Nothing here.</p>
                     ) : (
-                      <div className="overflow-hidden rounded-lg border border-border">
+                      <div className="overflow-hidden rounded-lg border border-border bg-surface">
                         <Table>
                           <TableHeader>
                             <TableRow>
+                              {/* Verdict sits next to the title: it is the answer, so it never scrolls out of view. */}
                               <TableHead>Title</TableHead>
-                              <TableHead>Category</TableHead>
-                              <TableHead>Institution</TableHead>
-                              <TableHead>Tier</TableHead>
-                              <TableHead>Status</TableHead>
-                              <TableHead>Deadline</TableHead>
                               <TableHead>Verdict</TableHead>
+                              <TableHead>Institution</TableHead>
+                              <TableHead>Deadline</TableHead>
+                              <TableHead>Tier</TableHead>
+                              <TableHead className="hidden xl:table-cell">Status</TableHead>
+                              <TableHead className="hidden 2xl:table-cell">Category</TableHead>
                             </TableRow>
                           </TableHeader>
                           <TableBody>
@@ -420,16 +422,16 @@ export function PoolView({
                                       )}
                                     </span>
                                   </TableCell>
-                                  <TableCell className="text-muted-foreground">{CATEGORY_LABELS[o.category]}</TableCell>
+                                  <TableCell>{v ? <VerdictBadge verdict={v.type as VerdictType} /> : '—'}</TableCell>
                                   <TableCell className="text-muted-foreground">{o.institution}</TableCell>
-                                  <TableCell>
-                                    <TierBadge tier={o.tier} />
-                                  </TableCell>
-                                  <TableCell className="text-muted-foreground">{STATUS_LABELS[o.status]}</TableCell>
                                   <TableCell className="font-mono text-xs text-muted-foreground">
                                     {formatDeadline(o.deadline)}
                                   </TableCell>
-                                  <TableCell>{v ? <VerdictBadge verdict={v.type as VerdictType} /> : '—'}</TableCell>
+                                  <TableCell>
+                                    <TierBadge tier={o.tier} />
+                                  </TableCell>
+                                  <TableCell className="hidden text-muted-foreground xl:table-cell">{STATUS_LABELS[o.status]}</TableCell>
+                                  <TableCell className="hidden text-muted-foreground 2xl:table-cell">{CATEGORY_LABELS[o.category]}</TableCell>
                                 </TableRow>
                               )
                             })}
@@ -452,7 +454,7 @@ export function PoolView({
           </SheetHeader>
           {selected && (
             <div className="px-4 pb-6">
-              <DetailPanel
+              <OpportunityDetail
                 opp={selected}
                 verdict={verdictById.get(selected.id)}
                 declined={declinedIds.has(selected.id)}

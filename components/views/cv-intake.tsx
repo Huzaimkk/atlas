@@ -1,8 +1,10 @@
 'use client'
 
 import { useRef, useState } from 'react'
+import { PageHeader } from '@/components/atlas/page-header'
 import { FileText, UploadCloud, CheckCircle2, XCircle } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { useReadOnly } from '@/components/atlas/read-only'
 
 type UploadState =
   | { status: 'idle' }
@@ -14,6 +16,7 @@ export function CvIntakeView() {
   const [dragActive, setDragActive] = useState(false)
   const [state, setState] = useState<UploadState>({ status: 'idle' })
   const inputRef = useRef<HTMLInputElement>(null)
+  const readOnly = useReadOnly()
 
   async function upload(file: File) {
     setState({ status: 'uploading', name: file.name })
@@ -38,14 +41,7 @@ export function CvIntakeView() {
 
   return (
     <div className="space-y-6">
-      <header>
-        <h1 className="text-2xl font-semibold tracking-tight">Add your CV</h1>
-        <p className="mt-1 max-w-xl text-sm text-muted-foreground">
-          Drop a PDF or Word file to start a draft profile. Parsing only gets you so far — Atlas follows up with the
-          questions a CV can't answer (was that degree period paid work? is that paper actually submitted?) before
-          anything becomes a profile a verdict can rely on.
-        </p>
-      </header>
+      <PageHeader title="CV intake" description="Drop a PDF or Word file to start a draft profile. Parsing only gets you so far, so Atlas follows up with the questions a CV can’t answer (was that job during your degree paid? is that paper actually submitted?) before anything becomes a profile a verdict can rely on." />
 
       <div
         onDragOver={(e) => {
@@ -56,8 +52,9 @@ export function CvIntakeView() {
         onDrop={onDrop}
         onClick={() => inputRef.current?.click()}
         className={cn(
-          'flex flex-col items-center justify-center gap-3 rounded-xl border-2 border-dashed px-6 py-20 text-center transition-colors cursor-pointer',
-          dragActive ? 'border-primary bg-primary/5' : 'border-border hover:border-border-strong'
+          'flex flex-col items-center justify-center gap-3 rounded-lg border border-dashed px-6 py-20 text-center transition-colors cursor-pointer',
+          dragActive ? 'border-foreground/50 bg-surface-2' : 'border-border bg-surface hover:border-border-strong',
+          readOnly && 'pointer-events-none opacity-60'
         )}
       >
         <input

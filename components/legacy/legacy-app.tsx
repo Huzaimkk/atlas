@@ -61,7 +61,13 @@ const T: React.CSSProperties = { ...I, width: '100%', minHeight: 110, resize: 'v
 const CARD: React.CSSProperties = { background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 12, padding: 20 }
 const routeColor = (r: string) => r === 'professor' ? 'var(--accent)' : r === 'direct' ? 'var(--accent2)' : 'var(--accent4)'
 
-export default function ATLASApp() {
+/**
+ * The pre-v2 toolkit (8 prompt agents + localStorage trackers), kept
+ * reachable at /legacy for its owner while the product surfaces replace
+ * it. Not part of the product: it is single-user, hardcodes one profile,
+ * and is only rendered behind the session check in app/legacy/page.tsx.
+ */
+export default function LegacyApp() {
   const [page, setPage] = useState<Page>('dashboard')
 
   // Track live stats from localStorage
@@ -110,7 +116,7 @@ export default function ATLASApp() {
   const navTo = (id: Page) => setPage(id)
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', background: 'var(--bg)' }}>
+    <div className="legacy-root" style={{ display: 'flex', flexDirection: 'column', height: '100vh', background: 'var(--bg)' }}>
 
       {/* ── Header ── */}
       <header style={{ padding: '13px 24px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: 'var(--surface)', flexShrink: 0, zIndex: 10 }}>

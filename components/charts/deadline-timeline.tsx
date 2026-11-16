@@ -24,8 +24,8 @@ export function DeadlineTimelineChart({ opportunities, verdicts }: { opportuniti
     .sort((a, b) => a.days - b.days)
 
   return (
-    <div className="space-y-3 rounded-lg border border-border p-4">
-      <h2 className="text-sm font-semibold text-foreground">Next {WINDOW_DAYS} days</h2>
+    <div className="space-y-3 rounded-lg border border-border bg-surface p-5">
+      <h2 className="text-sm font-medium text-foreground">Next {WINDOW_DAYS} days</h2>
 
       {rows.length === 0 ? (
         <EmptyState icon={CalendarRange} title="Nothing due" description="No actionable row has a deadline in the next 90 days." />

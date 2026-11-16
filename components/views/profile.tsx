@@ -1,6 +1,7 @@
 import { UserCircle, CheckCircle2, Circle, FileEdit, Clock } from 'lucide-react'
 import type { ProfileSnapshot } from '@/types/atlas'
 import { EmptyState } from '@/components/atlas/empty-state'
+import { PageHeader } from '@/components/atlas/page-header'
 import { cn } from '@/lib/utils'
 import { postDegreeHours } from '@/lib/atlas-format'
 
@@ -20,33 +21,29 @@ function DocStatusIcon({ status }: { status: 'ready' | 'draft' | 'missing' }) {
   return <Circle className="size-3.5 text-faint-foreground" strokeWidth={1.75} />
 }
 
-export function ProfileView({ profile }: { profile: ProfileSnapshot | null }) {
+export function ProfileView({ profile, onAddCv }: { profile: ProfileSnapshot | null; onAddCv?: () => void }) {
   return (
     <div className="space-y-6">
-      <header className="flex items-baseline justify-between">
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight">Profile</h1>
-          <p className="mt-1 text-sm text-muted-foreground">
-            The current snapshot every verdict in the pool is computed against.
-          </p>
-        </div>
+      <PageHeader title="Profile" description="What Atlas knows about you. Every verdict is computed against exactly this.">
         {profile && (
           <span className="font-mono text-xs text-faint-foreground">
-            v{profile.version} · {profile.created_at}
+            {/* user_version, never the global `version` — that one leaks system-wide usage (see types/atlas.ts) */}
+            Version {profile.user_version ?? 1} · {new Date(profile.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
           </span>
         )}
-      </header>
+      </PageHeader>
 
       {!profile ? (
         <EmptyState
           icon={UserCircle}
-          title="No profile snapshot yet"
-          description="Blocked on the CV upload (spec §3, the critical path). Everything downstream — verdicts, the Gap Queue, the Action Queue — depends on this layer existing first."
+          title="No profile yet"
+          description="Add your CV to start. Every verdict is computed against your profile, so nothing can be checked until it exists."
+          action={onAddCv ? { label: 'Add your CV', onClick: onAddCv } : undefined}
         />
       ) : (
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-          <section className="space-y-2 rounded-lg border border-border p-4">
-            <h2 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Identity & constraints</h2>
+          <section className="space-y-2 rounded-lg border border-border bg-surface p-5">
+            <h2 className="text-sm font-medium text-foreground">Identity and constraints</h2>
             <dl className="space-y-1 text-sm">
               <Row label="Citizenship" value={profile.identity.citizenship} />
               <Row label="Current degree" value={profile.identity.current_degree_level} />
@@ -56,15 +53,15 @@ export function ProfileView({ profile }: { profile: ProfileSnapshot | null }) {
             </dl>
           </section>
 
-          <section className="space-y-2 rounded-lg border border-border p-4">
-            <h2 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Credentials</h2>
+          <section className="space-y-2 rounded-lg border border-border bg-surface p-5">
+            <h2 className="text-sm font-medium text-foreground">Credentials</h2>
             <dl className="space-y-1 text-sm">
               <Row
                 label="Post-degree hours"
                 value={
                   profile.degree_completed_on
                     ? `${postDegreeHours(profile.degree_completed_on, profile.full_time_hours_per_month).toLocaleString()} (computed today)`
-                    : 'no degree_completed_on set'
+                    : 'Add your degree completion date'
                 }
               />
               {profile.credentials.degrees.map((d) => (
@@ -76,8 +73,8 @@ export function ProfileView({ profile }: { profile: ProfileSnapshot | null }) {
             </dl>
           </section>
 
-          <section className="space-y-2 rounded-lg border border-border p-4 sm:col-span-2">
-            <h2 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Research fingerprint</h2>
+          <section className="space-y-2 rounded-lg border border-border bg-surface p-5 sm:col-span-2">
+            <h2 className="text-sm font-medium text-foreground">Research fingerprint</h2>
             <div className="flex flex-wrap gap-1.5">
               {profile.research_fingerprint.map((tag) => (
                 <span key={tag} className="rounded-md bg-surface-2 px-2 py-1 text-xs text-foreground">
@@ -87,8 +84,8 @@ export function ProfileView({ profile }: { profile: ProfileSnapshot | null }) {
             </div>
           </section>
 
-          <section className="space-y-2 rounded-lg border border-border p-4 sm:col-span-2">
-            <h2 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Document inventory</h2>
+          <section className="space-y-2 rounded-lg border border-border bg-surface p-5 sm:col-span-2">
+            <h2 className="text-sm font-medium text-foreground">Document inventory</h2>
             <ul className="grid grid-cols-2 gap-x-6 gap-y-1.5 sm:grid-cols-3">
               {(Object.keys(profile.document_inventory) as (keyof ProfileSnapshot['document_inventory'])[]).map((key) => (
                 <li key={key} className="flex items-center gap-1.5 text-sm">
@@ -102,8 +99,8 @@ export function ProfileView({ profile }: { profile: ProfileSnapshot | null }) {
           </section>
 
           {profile.pending_items.length > 0 && (
-            <section className="space-y-2 rounded-lg border border-border p-4 sm:col-span-2">
-              <h2 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Pending — not yet achieved</h2>
+            <section className="space-y-2 rounded-lg border border-border bg-surface p-5 sm:col-span-2">
+              <h2 className="text-sm font-medium text-foreground">In progress, not yet counted</h2>
               <ul className="space-y-1.5 text-sm">
                 {profile.pending_items.map((p) => (
                   <li key={p.item} className="flex items-center justify-between gap-3">
@@ -123,8 +120,8 @@ export function ProfileView({ profile }: { profile: ProfileSnapshot | null }) {
           )}
 
           {profile.network.length > 0 && (
-            <section className="space-y-2 rounded-lg border border-border p-4 sm:col-span-2">
-              <h2 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Network</h2>
+            <section className="space-y-2 rounded-lg border border-border bg-surface p-5 sm:col-span-2">
+              <h2 className="text-sm font-medium text-foreground">Network</h2>
               <ul className="space-y-1 text-sm">
                 {profile.network.map((n) => (
                   <li key={n.professor} className="flex justify-between gap-2">

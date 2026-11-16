@@ -4,6 +4,7 @@ import { AnimatePresence, motion } from 'motion/react'
 import { ListChecks, ExternalLink, AlertTriangle, PenOff } from 'lucide-react'
 import type { Opportunity, Verdict } from '@/types/atlas'
 import { EmptyState } from '@/components/atlas/empty-state'
+import { PageHeader } from '@/components/atlas/page-header'
 import { VerdictBadge, TierBadge } from '@/components/atlas/verdict-badge'
 import { formatDeadline, formatFunding, urgencyBand, hasAiWritingPolicy } from '@/lib/atlas-format'
 import { Button } from '@/components/ui/button'
@@ -90,28 +91,22 @@ export function ActionQueueView({ opportunities, verdicts }: { opportunities: Op
 
   return (
     <div className="space-y-6">
-      <header>
-        <h1 className="text-2xl font-semibold tracking-tight">Action Queue</h1>
-        <p className="mt-1 text-sm text-muted-foreground">
-          Rows with every requirement already satisfied. Dated rows first, sorted by urgency then fit — late-window
-          rows always lead. Rolling and undated rows follow, sorted by fit alone.
-        </p>
-      </header>
+      <PageHeader title="Ready to apply" description="Every requirement is already met. Dated opportunities come first, most urgent on top, and late-window ones always lead. Rolling and undated ones follow, ordered by fit." />
 
       {rows.length === 0 ? (
         <EmptyState
           icon={ListChecks}
-          title="Nothing ready to act on yet"
-          description="Once opportunities in the pool pass eligibility with no outstanding requirements, they land here — sorted by deadline, with late-window rows flagged first."
+          title="Nothing is ready to apply to yet"
+          description="An opportunity lands here once you meet every eligibility rule and have every required document. Close a gap and it moves here on its own."
         />
       ) : (
         <div className="space-y-6">
           {dated.length > 0 && (
             <div className="space-y-2">
-              <h2 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+              <h2 className="text-sm font-medium text-foreground">
                 Dated — {dated.length}
               </h2>
-              <ul className="divide-y divide-border rounded-lg border border-border">
+              <ul className="divide-y divide-border rounded-lg border border-border bg-surface">
                 <AnimatePresence initial={false}>
                   {dated.map((r) => (
                     <RowItem key={r.opp.id} {...r} />
@@ -123,10 +118,10 @@ export function ActionQueueView({ opportunities, verdicts }: { opportunities: Op
 
           {undated.length > 0 && (
             <div className="space-y-2">
-              <h2 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+              <h2 className="text-sm font-medium text-foreground">
                 Rolling & undated — {undated.length}
               </h2>
-              <ul className="divide-y divide-border rounded-lg border border-border">
+              <ul className="divide-y divide-border rounded-lg border border-border bg-surface">
                 <AnimatePresence initial={false}>
                   {undated.map((r) => (
                     <RowItem key={r.opp.id} {...r} />

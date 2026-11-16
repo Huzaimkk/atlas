@@ -5,9 +5,11 @@ import { useRouter } from 'next/navigation'
 import { Inbox as InboxIcon, Camera, FileText, FileType, Link2, AlertTriangle, Loader2, Check, X } from 'lucide-react'
 import type { InboxLead, LeadConfidence, Origin } from '@/types/atlas'
 import { EmptyState } from '@/components/atlas/empty-state'
+import { PageHeader } from '@/components/atlas/page-header'
 import { VerdictBadge } from '@/components/atlas/verdict-badge'
 import { formatDeadline, formatFunding } from '@/lib/atlas-format'
 import { cn } from '@/lib/utils'
+import { useReadOnly } from '@/components/atlas/read-only'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
 import { Input } from '@/components/ui/input'
@@ -29,6 +31,7 @@ const CONFIDENCE_META: Record<LeadConfidence, { label: string; className: string
 
 function LeadCard({ lead }: { lead: InboxLead }) {
   const router = useRouter()
+  const readOnly = useReadOnly()
   const [busy, setBusy] = useState(false)
   const [sourceUrlInput, setSourceUrlInput] = useState('')
   const OriginIcon = ORIGIN_ICON[lead.origin]
@@ -69,7 +72,7 @@ function LeadCard({ lead }: { lead: InboxLead }) {
   }
 
   return (
-    <li className="space-y-3 rounded-lg border border-border p-4">
+    <li className="space-y-3 rounded-lg border border-border bg-surface p-5">
       <div className="flex items-start gap-3">
         <div className="flex size-8 shrink-0 items-center justify-center rounded-md bg-surface-2 text-muted-foreground">
           <OriginIcon className="size-4" strokeWidth={1.75} />
@@ -77,7 +80,7 @@ function LeadCard({ lead }: { lead: InboxLead }) {
         <div className="min-w-0 flex-1 space-y-1.5">
           <div className="flex items-center gap-2">
             <p className="text-sm font-medium text-foreground">{ex.title || 'Untitled lead'}</p>
-            <span className={cn('font-mono text-2xs font-medium uppercase tracking-wide', confidence.className)}>{confidence.label}</span>
+            <span className={cn('text-xs font-medium', confidence.className)}>{confidence.label}</span>
           </div>
           {lead.raw_excerpt && <p className="text-xs text-muted-foreground line-clamp-2">&ldquo;{lead.raw_excerpt}&rdquo;</p>}
           <div className="flex flex-wrap items-center gap-3 font-mono text-2xs text-faint-foreground">
@@ -116,7 +119,7 @@ function LeadCard({ lead }: { lead: InboxLead }) {
                 {r.rule_type}
               </span>
               <span className="text-foreground">{r.rule_text}</span>
-              <p className="mt-0.5 pl-1 text-faint-foreground">&ldquo;{r.source_quote}&rdquo;</p>
+              <p className="source-quote mt-0.5 text-sm">&ldquo;{r.source_quote}&rdquo;</p>
             </div>
           ))}
           {ex.requirements?.map((r, i) => (
@@ -146,17 +149,17 @@ function LeadCard({ lead }: { lead: InboxLead }) {
             />
           )}
           <div className="flex gap-2">
-            <Button size="sm" className="h-7 gap-1 text-xs" disabled={busy || (!lead.source_url && !sourceUrlInput.trim())} onClick={confirm}>
+            <Button size="sm" className="h-7 gap-1 text-xs" disabled={readOnly || busy || (!lead.source_url && !sourceUrlInput.trim())} onClick={confirm}>
               {busy ? <Loader2 className="size-3.5 animate-spin" /> : <Check className="size-3.5" />} Confirm & save
             </Button>
-            <Button size="sm" variant="ghost" className="h-7 gap-1 text-xs" disabled={busy} onClick={discard}>
+            <Button size="sm" variant="ghost" className="h-7 gap-1 text-xs" disabled={readOnly || busy} onClick={discard}>
               <X className="size-3.5" /> Discard
             </Button>
           </div>
         </div>
       )}
       {lead.extraction_error && (
-        <Button size="sm" variant="ghost" className="h-7 gap-1 text-xs" disabled={busy} onClick={discard}>
+        <Button size="sm" variant="ghost" className="h-7 gap-1 text-xs" disabled={readOnly || busy} onClick={discard}>
           <X className="size-3.5" /> Discard
         </Button>
       )}
@@ -166,6 +169,7 @@ function LeadCard({ lead }: { lead: InboxLead }) {
 
 export function InboxView({ leads }: { leads: InboxLead[] }) {
   const router = useRouter()
+  const readOnly = useReadOnly()
   const [raw, setRaw] = useState('')
   const [extracting, setExtracting] = useState(false)
 
@@ -189,13 +193,7 @@ export function InboxView({ leads }: { leads: InboxLead[] }) {
 
   return (
     <div className="space-y-6">
-      <header>
-        <h1 className="text-2xl font-semibold tracking-tight">Inbox</h1>
-        <p className="mt-1 text-sm text-muted-foreground">
-          Paste an opportunity&apos;s text or its URL. Every drop is a lead, never a fact, until it resolves to a
-          primary source and you confirm it.
-        </p>
-      </header>
+      <PageHeader title="Inbox" description="Paste an opportunity’s text or its link. Every drop is a lead, never a fact, until it is matched to the official page and you confirm it." />
 
       <div className="space-y-2 rounded-lg border border-dashed border-border px-4 py-4">
         <Textarea
@@ -206,9 +204,9 @@ export function InboxView({ leads }: { leads: InboxLead[] }) {
         />
         <div className="flex items-center justify-between">
           <p className="text-2xs text-faint-foreground">
-            Screenshot and PDF upload aren&apos;t available yet — no OCR model is wired in. Paste text or a link instead.
+            Screenshots and PDFs can&apos;t be read yet. Paste the text or a link instead.
           </p>
-          <Button size="sm" className="h-7 gap-1 text-xs" disabled={!raw.trim() || extracting} onClick={extract}>
+          <Button size="sm" className="h-7 gap-1 text-xs" disabled={readOnly || !raw.trim() || extracting} onClick={extract}>
             {extracting ? <Loader2 className="size-3.5 animate-spin" /> : null} {extracting ? 'Extracting...' : 'Extract'}
           </Button>
         </div>
@@ -218,7 +216,7 @@ export function InboxView({ leads }: { leads: InboxLead[] }) {
         <EmptyState
           icon={InboxIcon}
           title="Inbox is empty"
-          description="Nothing dropped yet. This is where LinkedIn posts, screenshots, and anything the automated sweeps can't reach get parsed into a lead and resolved before they're actionable."
+          description="Paste a post, an email or a link above. Atlas turns it into a lead, checks it against the official page, and only then adds it to your opportunities."
         />
       ) : (
         <ul className="space-y-2">

@@ -2,12 +2,17 @@
 
 import { useMemo, useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
-import { AlertTriangle, Clock, Hourglass, Target, ChevronDown, ChevronRight, Mail } from 'lucide-react'
+import { AnimatePresence, motion } from 'motion/react'
+import { AlertTriangle, Clock, Hourglass, Target } from 'lucide-react'
 import type { AggregatedGap, Application, GapClosure, MissedDeadline, Opportunity, Referee, RefereeStatus, Verdict } from '@/types/atlas'
 import { APPLICATION_TERMINAL_STATUSES } from '@/types/atlas'
 import { EmptyState } from '@/components/atlas/empty-state'
+import { PageHeader, SectionTitle } from '@/components/atlas/page-header'
+import { CountUp } from '@/components/atlas/count-up'
+import { useReadOnly } from '@/components/atlas/read-only'
 import { VerdictBadge } from '@/components/atlas/verdict-badge'
-import { daysUntil, daysSince, formatDeadline } from '@/lib/atlas-format'
+import { daysUntil, daysSince, formatDeadline, APPLICATION_STATUS_LABELS } from '@/lib/atlas-format'
+import { disclose, transition } from '@/lib/motion'
 import { cn } from '@/lib/utils'
 import {
   Select,
@@ -36,6 +41,8 @@ const REFEREE_STATUS_LABELS: Record<RefereeStatus, string> = {
   letter_submitted: 'Letter submitted',
 }
 
+type CounterId = 'missed' | 'submitted' | 'gaps' | 'referees'
+
 function monthStart(): Date {
   const d = new Date()
   d.setDate(1)
@@ -43,59 +50,55 @@ function monthStart(): Date {
   return d
 }
 
-/** Stat tile — headline number, label, optional click-to-expand detail. */
-function CounterTile({
-  icon: Icon,
+/**
+ * One cell of the counter strip. The four counters are a single ledger
+ * line, not four cards: they share one border and one baseline, and the
+ * detail for whichever is selected opens as one panel underneath.
+ */
+function Counter({
   label,
-  value,
+  selected,
+  onSelect,
   tone,
-  expandable,
-  expanded,
-  onToggle,
   children,
 }: {
-  icon: React.ElementType
   label: string
-  value: string
+  selected?: boolean
+  onSelect?: () => void
   tone?: 'late'
-  expandable?: boolean
-  expanded?: boolean
-  onToggle?: () => void
-  children?: React.ReactNode
+  children: React.ReactNode
 }) {
-  return (
-    <div className="rounded-lg border border-border p-4">
-      <button
-        type="button"
-        onClick={expandable ? onToggle : undefined}
-        className={cn('flex w-full items-start justify-between gap-2 text-left', expandable && 'cursor-pointer')}
-      >
-        <div className="space-y-1">
-          <p className={cn('font-mono text-2xl font-semibold tabular-nums', tone === 'late' ? 'text-verdict-late' : 'text-foreground')}>
-            {value}
-          </p>
-          <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
-            <Icon className="size-3.5 shrink-0" strokeWidth={1.75} />
-            {label}
-          </p>
-        </div>
-        {expandable &&
-          (expanded ? (
-            <ChevronDown className="size-4 shrink-0 text-muted-foreground" strokeWidth={1.75} />
-          ) : (
-            <ChevronRight className="size-4 shrink-0 text-muted-foreground" strokeWidth={1.75} />
-          ))}
-      </button>
-      {expandable && expanded && <div className="mt-3 border-t border-border pt-3">{children}</div>}
-    </div>
+  const body = (
+    <>
+      <p className={cn('font-mono text-2xl tabular-nums', tone === 'late' ? 'text-verdict-late' : 'text-foreground')}>{children}</p>
+      <p className="mt-1 text-xs text-muted-foreground">{label}</p>
+      {selected && (
+        <motion.span layoutId="today-counter-marker" transition={transition.layout} className="absolute inset-x-0 bottom-0 h-px bg-foreground" />
+      )}
+    </>
+  )
+  const cell = 'relative bg-surface px-5 py-4 text-left'
+  return onSelect ? (
+    <button type="button" onClick={onSelect} aria-expanded={selected} className={cn(cell, 'transition-colors duration-150 hover:bg-surface-2')}>
+      {body}
+    </button>
+  ) : (
+    <div className={cell}>{body}</div>
   )
 }
 
+function Panel({ className, children }: { className?: string; children: React.ReactNode }) {
+  return <section className={cn('space-y-3 rounded-lg border border-border bg-surface p-5', className)}>{children}</section>
+}
+
+function Quiet({ children }: { children: React.ReactNode }) {
+  return <p className="text-sm text-faint-foreground">{children}</p>
+}
+
 /**
- * Today — replaces Home as the default view. Permanent counters (item 3)
- * sit above the four accountability blocks (item 1) — the counters never
- * reset and are never hidden, independent of whether the blocks below have
- * anything in them right now.
+ * Today — the default view. Permanent counters sit above the four
+ * accountability blocks: the counters never reset and are never hidden,
+ * independent of whether the blocks below have anything in them.
  */
 export function TodayView({
   opportunities,
@@ -115,8 +118,9 @@ export function TodayView({
   missedDeadlines: MissedDeadline[]
 }) {
   const router = useRouter()
+  const readOnly = useReadOnly()
   const [, startTransition] = useTransition()
-  const [expandedCounter, setExpandedCounter] = useState<'missed' | 'gaps' | 'referees' | null>(null)
+  const [openCounter, setOpenCounter] = useState<CounterId | null>(null)
   const [pendingReferee, setPendingReferee] = useState<string | null>(null)
 
   const oppById = new Map(opportunities.map((o) => [o.id, o]))
@@ -143,6 +147,7 @@ export function TodayView({
     .sort((a, b) => b.ageDays - a.ageDays)
 
   const topGaps = [...gaps].sort((a, b) => b.unblock_count - a.unblock_count).slice(0, 3)
+  const maxUnblock = topGaps[0]?.unblock_count ?? 1
 
   const nothingAtAll = deadlinesSoon.length === 0 && overdueCommitments.length === 0 && agingReady.length === 0 && topGaps.length === 0
 
@@ -155,6 +160,8 @@ export function TodayView({
   const gapsClosedSatisfied = gapClosures.filter((c) => c.cause === 'satisfied')
   const gapsClosedOther = gapClosures.filter((c) => c.cause !== 'satisfied')
   const lettersSecured = referees.filter((r) => r.status === 'letter_submitted').length
+
+  const toggle = (id: CounterId) => setOpenCounter((c) => (c === id ? null : id))
 
   async function changeRefereeStatus(id: string, status: RefereeStatus) {
     setPendingReferee(id)
@@ -171,141 +178,146 @@ export function TodayView({
   }
 
   return (
-    <div className="space-y-6">
-      <header>
-        <h1 className="text-2xl font-semibold tracking-tight">Today</h1>
-        <p className="mt-1 text-sm text-muted-foreground">What did you do about it — not what exists.</p>
-      </header>
+    <div className="space-y-8">
+      <PageHeader title="Today" description="What needs you now, and what you have done about it so far.">
+        <p className="font-mono text-xs text-faint-foreground">
+          {new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}
+        </p>
+      </PageHeader>
 
       {/* Permanent counters — never reset, never hidden, independent of the blocks below. */}
-      <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
-        <CounterTile
-          icon={AlertTriangle}
-          label="Deadlines passed while READY"
-          value={String(missedDeadlines.length)}
-          tone="late"
-          expandable
-          expanded={expandedCounter === 'missed'}
-          onToggle={() => setExpandedCounter((c) => (c === 'missed' ? null : 'missed'))}
-        >
-          {missedDeadlines.length === 0 ? (
-            <p className="text-xs text-faint-foreground">None on record.</p>
-          ) : (
-            <ul className="space-y-2">
-              {missedDeadlines.map((m) => (
-                <li key={m.opportunity_id} className="text-xs">
-                  <p className="font-medium text-foreground">{m.title}</p>
-                  <p className="text-muted-foreground">
-                    {formatDeadline(m.deadline)}
-                    {m.daysReady !== null ? ` · sat READY for ${m.daysReady}d before it expired` : ' · READY duration unknown (expired before tracking started)'}
-                  </p>
-                </li>
-              ))}
-            </ul>
-          )}
-        </CounterTile>
+      <div className="overflow-hidden rounded-lg border border-border bg-surface">
+        <div className="grid grid-cols-2 gap-px bg-border lg:grid-cols-4">
+          <Counter label="Deadlines missed while ready" tone={missedDeadlines.length > 0 ? 'late' : undefined} selected={openCounter === 'missed'} onSelect={() => toggle('missed')}>
+            <CountUp value={missedDeadlines.length} />
+          </Counter>
+          <Counter label="Applications submitted this month">
+            <CountUp value={appsSubmittedThisMonth} />
+          </Counter>
+          <Counter label="Gaps closed this month" selected={openCounter === 'gaps'} onSelect={() => toggle('gaps')}>
+            <CountUp value={gapsClosedSatisfied.length} />
+          </Counter>
+          <Counter label="Reference letters secured" selected={openCounter === 'referees'} onSelect={() => toggle('referees')}>
+            <CountUp value={lettersSecured} />
+            <span className="text-base text-faint-foreground"> of {REFEREE_TARGET}</span>
+          </Counter>
+        </div>
 
-        <CounterTile icon={Clock} label="Applications submitted this month" value={String(appsSubmittedThisMonth)} />
+        <AnimatePresence initial={false} mode="wait">
+          {openCounter && (
+            <motion.div key={openCounter} variants={disclose} initial="closed" animate="open" exit="closed" className="overflow-hidden">
+              <div className="border-t border-border px-5 py-4">
+                {openCounter === 'missed' &&
+                  (missedDeadlines.length === 0 ? (
+                    <Quiet>No deadline has passed on something you were ready for.</Quiet>
+                  ) : (
+                    <ul className="space-y-2.5">
+                      {missedDeadlines.map((m) => (
+                        <li key={m.opportunity_id} className="flex flex-wrap items-baseline justify-between gap-x-4 text-sm">
+                          <span className="text-foreground">{m.title}</span>
+                          <span className="font-mono text-xs text-muted-foreground">
+                            {formatDeadline(m.deadline)}
+                            {m.daysReady !== null ? ` · ready for ${m.daysReady}d before it closed` : ' · closed before tracking began'}
+                          </span>
+                        </li>
+                      ))}
+                    </ul>
+                  ))}
 
-        <CounterTile
-          icon={Target}
-          label="Gaps closed this month"
-          value={String(gapsClosedSatisfied.length)}
-          expandable
-          expanded={expandedCounter === 'gaps'}
-          onToggle={() => setExpandedCounter((c) => (c === 'gaps' ? null : 'gaps'))}
-        >
-          <div className="space-y-3">
-            <div>
-              <p className="mb-1 text-2xs font-semibold uppercase tracking-wide text-muted-foreground">Satisfied</p>
-              {gapsClosedSatisfied.length === 0 ? (
-                <p className="text-xs text-faint-foreground">None this month.</p>
-              ) : (
-                <ul className="space-y-1">
-                  {gapsClosedSatisfied.map((c) => (
-                    <li key={c.id} className="text-xs text-foreground">
-                      {c.label ?? c.gap_type} — {oppById.get(c.opportunity_id)?.title ?? c.opportunity_id}
-                    </li>
+                {openCounter === 'gaps' && (
+                  <div className="space-y-4">
+                    {gapsClosedSatisfied.length === 0 ? (
+                      <Quiet>Nothing closed yet this month.</Quiet>
+                    ) : (
+                      <ul className="space-y-1.5">
+                        {gapsClosedSatisfied.map((c) => (
+                          <li key={c.id} className="flex flex-wrap items-baseline justify-between gap-x-4 text-sm">
+                            <span className="text-foreground">{c.label ?? c.gap_type}</span>
+                            <span className="text-xs text-muted-foreground">{oppById.get(c.opportunity_id)?.title ?? c.opportunity_id}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                    {gapsClosedOther.length > 0 && (
+                      <div className="space-y-1.5">
+                        <p className="text-xs text-faint-foreground">Not counted — these stopped mattering rather than being closed</p>
+                        <ul className="space-y-1.5">
+                          {gapsClosedOther.map((c) => (
+                            <li key={c.id} className="flex flex-wrap items-baseline justify-between gap-x-4 text-sm text-muted-foreground">
+                              <span>
+                                {c.label ?? c.gap_type}, {oppById.get(c.opportunity_id)?.title ?? c.opportunity_id}
+                              </span>
+                              <span className="font-mono text-2xs text-faint-foreground">{c.cause.replaceAll('_', ' ')}</span>
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {openCounter === 'referees' &&
+                  (referees.length === 0 ? (
+                    <Quiet>No referees on your list yet.</Quiet>
+                  ) : (
+                    <ul className="grid gap-x-10 gap-y-2.5 sm:grid-cols-2">
+                      {referees.map((r) => (
+                        <li key={r.id} className="flex items-center justify-between gap-3">
+                          <div className="min-w-0">
+                            <p className="truncate text-sm text-foreground">{r.name}</p>
+                            {r.relationship && <p className="truncate text-xs text-muted-foreground">{r.relationship}</p>}
+                          </div>
+                          <Select
+                            value={r.status}
+                            onValueChange={(v) => changeRefereeStatus(r.id, v as RefereeStatus)}
+                            disabled={readOnly || pendingReferee === r.id}
+                          >
+                            <SelectTrigger size="sm" className="h-7 w-36 shrink-0 text-xs">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {(Object.keys(REFEREE_STATUS_LABELS) as RefereeStatus[]).map((s) => (
+                                <SelectItem key={s} value={s}>
+                                  {REFEREE_STATUS_LABELS[s]}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </li>
+                      ))}
+                    </ul>
                   ))}
-                </ul>
-              )}
-            </div>
-            {gapsClosedOther.length > 0 && (
-              <div>
-                <p className="mb-1 text-2xs font-semibold uppercase tracking-wide text-muted-foreground">Not progress (didn&apos;t close, stopped mattering)</p>
-                <ul className="space-y-1">
-                  {gapsClosedOther.map((c) => (
-                    <li key={c.id} className="text-xs text-muted-foreground">
-                      {c.label ?? c.gap_type} — {oppById.get(c.opportunity_id)?.title ?? c.opportunity_id}
-                      <span className="ml-1 rounded border border-border-strong px-1 py-0.5 font-mono text-2xs">{c.cause.replace('_', ' ')}</span>
-                    </li>
-                  ))}
-                </ul>
               </div>
-            )}
-          </div>
-        </CounterTile>
-
-        <CounterTile
-          icon={Mail}
-          label="Letters secured"
-          value={`${lettersSecured} of ${REFEREE_TARGET}`}
-          expandable
-          expanded={expandedCounter === 'referees'}
-          onToggle={() => setExpandedCounter((c) => (c === 'referees' ? null : 'referees'))}
-        >
-          <ul className="space-y-2">
-            {referees.map((r) => (
-              <li key={r.id} className="flex items-center justify-between gap-2">
-                <div className="min-w-0">
-                  <p className="truncate text-xs font-medium text-foreground">{r.name}</p>
-                  {r.relationship && <p className="truncate text-2xs text-muted-foreground">{r.relationship}</p>}
-                </div>
-                <Select value={r.status} onValueChange={(v) => changeRefereeStatus(r.id, v as RefereeStatus)} disabled={pendingReferee === r.id}>
-                  <SelectTrigger size="sm" className="h-7 w-36 shrink-0 text-xs">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {(Object.keys(REFEREE_STATUS_LABELS) as RefereeStatus[]).map((s) => (
-                      <SelectItem key={s} value={s}>
-                        {REFEREE_STATUS_LABELS[s]}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </li>
-            ))}
-          </ul>
-        </CounterTile>
+            </motion.div>
+          )}
+        </AnimatePresence>
       </div>
 
       {nothingAtAll ? (
         <EmptyState
           icon={Clock}
-          title="Nothing demanding attention right now"
-          description="No deadlines inside 21 days, no stalled commitments, no aging READY rows, and no outstanding gaps."
+          title="Nothing needs you today"
+          description="No deadline inside 21 days, nothing you started has stalled, nothing ready is sitting untouched, and there are no open gaps."
         />
       ) : (
         <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
-          <section className="space-y-2 rounded-lg border border-border p-4">
-            <h2 className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-foreground">
-              <Clock className="size-3.5" strokeWidth={1.75} />
-              Deadlines inside {DEADLINE_WINDOW_DAYS} days
-              <span className="font-mono text-2xs text-muted-foreground">{deadlinesSoon.length}</span>
-            </h2>
+          <Panel>
+            <SectionTitle icon={Clock} count={deadlinesSoon.length}>
+              Closing in the next {DEADLINE_WINDOW_DAYS} days
+            </SectionTitle>
             {deadlinesSoon.length === 0 ? (
-              <p className="text-xs text-faint-foreground">Nothing closing soon.</p>
+              <Quiet>Nothing closes soon.</Quiet>
             ) : (
               <ul className="divide-y divide-border">
                 {deadlinesSoon.map(({ opp, verdict, days }) => (
-                  <li key={opp.id} className="flex items-center justify-between gap-3 py-2">
+                  <li key={opp.id} className="flex items-center justify-between gap-3 py-2.5">
                     <div className="min-w-0">
-                      <p className="truncate text-sm font-medium text-foreground">{opp.title}</p>
+                      <p className="truncate text-sm text-foreground">{opp.title}</p>
                       <p className="truncate text-xs text-muted-foreground">{opp.institution}</p>
                     </div>
-                    <div className="flex shrink-0 items-center gap-2">
+                    <div className="flex shrink-0 items-center gap-3">
                       {verdict && <VerdictBadge verdict={verdict.type} />}
-                      <span className="w-14 text-right font-mono text-xs text-muted-foreground">
+                      <span className={cn('w-12 text-right font-mono text-xs tabular-nums', (days ?? 99) <= 7 ? 'text-verdict-late' : 'text-muted-foreground')}>
                         {days === 0 ? 'today' : `${days}d`}
                       </span>
                     </div>
@@ -313,77 +325,77 @@ export function TodayView({
                 ))}
               </ul>
             )}
-          </section>
+          </Panel>
 
-          <section className="space-y-2 rounded-lg border border-border p-4">
-            <h2 className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-foreground">
-              <AlertTriangle className="size-3.5 text-verdict-late" strokeWidth={1.75} />
-              Overdue commitments
-              <span className="font-mono text-2xs text-muted-foreground">{overdueCommitments.length}</span>
-            </h2>
+          <Panel>
+            <SectionTitle icon={AlertTriangle} count={overdueCommitments.length}>
+              Started, then stalled
+            </SectionTitle>
             {overdueCommitments.length === 0 ? (
-              <p className="text-xs text-faint-foreground">Nothing marked started has gone stale.</p>
+              <Quiet>Everything you started has moved in the last two weeks.</Quiet>
             ) : (
               <ul className="divide-y divide-border">
                 {overdueCommitments.map(({ app, opp, staleDays }) => (
-                  <li key={app.id} className="flex items-center justify-between gap-3 py-2">
+                  <li key={app.id} className="flex items-center justify-between gap-3 py-2.5">
                     <div className="min-w-0">
-                      <p className="truncate text-sm font-medium text-foreground">{opp.title}</p>
-                      <p className="truncate text-xs text-muted-foreground">Status: {app.status.replace('_', ' ')}</p>
+                      <p className="truncate text-sm text-foreground">{opp.title}</p>
+                      <p className="truncate text-xs text-muted-foreground">{APPLICATION_STATUS_LABELS[app.status]}</p>
                     </div>
-                    <span className="shrink-0 font-mono text-xs text-verdict-late">{staleDays}d unchanged</span>
+                    <span className="shrink-0 font-mono text-xs text-verdict-late tabular-nums">{staleDays}d without a change</span>
                   </li>
                 ))}
               </ul>
             )}
-          </section>
+          </Panel>
 
-          <section className="space-y-2 rounded-lg border border-border p-4 lg:col-span-2">
-            <h2 className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-foreground">
-              <Hourglass className="size-3.5" strokeWidth={1.75} />
-              Aging READY rows — actionable with nothing done
-              <span className="font-mono text-2xs text-muted-foreground">{agingReady.length}</span>
-            </h2>
+          <Panel className="lg:col-span-2">
+            <SectionTitle icon={Hourglass} count={agingReady.length}>
+              Ready, and waiting on you
+            </SectionTitle>
             {agingReady.length === 0 ? (
-              <p className="text-xs text-faint-foreground">No READY row has been sitting untouched.</p>
+              <Quiet>Nothing ready has been left sitting.</Quiet>
             ) : (
               <ul className="divide-y divide-border">
                 {agingReady.map(({ opp, ageDays, daysLeft }) => (
-                  <li key={opp.id} className="flex items-center justify-between gap-3 py-2 text-sm">
-                    <span className="min-w-0 truncate font-medium text-foreground">{opp.title}</span>
-                    <span className="shrink-0 font-mono text-xs text-muted-foreground">
-                      READY for {ageDays}d
-                      {daysLeft !== null && (
-                        <span className={cn(daysLeft <= 14 && 'text-verdict-late')}> · {daysLeft}d left</span>
-                      )}
-                      {' · no action taken'}
+                  <li key={opp.id} className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1 py-2.5 text-sm">
+                    <span className="min-w-0 truncate text-foreground">{opp.title}</span>
+                    <span className="shrink-0 font-mono text-xs text-muted-foreground tabular-nums">
+                      ready for {ageDays}d
+                      {daysLeft !== null && <span className={cn(daysLeft <= 14 && 'text-verdict-late')}> · {daysLeft}d left</span>}
                     </span>
                   </li>
                 ))}
               </ul>
             )}
-          </section>
+          </Panel>
 
-          <section className="space-y-2 rounded-lg border border-border p-4 lg:col-span-2">
-            <h2 className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-foreground">
-              <Target className="size-3.5" strokeWidth={1.75} />
-              This week&apos;s gaps — top 3 by unblock count
-            </h2>
+          <Panel className="lg:col-span-2">
+            <SectionTitle icon={Target}>The three gaps worth closing first</SectionTitle>
             {topGaps.length === 0 ? (
-              <p className="text-xs text-faint-foreground">No outstanding gaps.</p>
+              <Quiet>No open gaps.</Quiet>
             ) : (
-              <ul className="divide-y divide-border">
+              <ul className="space-y-3 pt-1">
                 {topGaps.map((gap) => (
-                  <li key={gap.id} className="flex items-center justify-between gap-3 py-2 text-sm">
-                    <span className="min-w-0 truncate font-medium text-foreground">{gap.label}</span>
-                    <span className="shrink-0 font-mono text-xs text-muted-foreground">
-                      unblocks {gap.unblock_count} · {gap.time_estimate} · {gap.cost_estimate}
+                  <li key={gap.id} className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-4 gap-y-1.5 sm:grid-cols-[minmax(0,16rem)_minmax(0,1fr)_auto]">
+                    <span className="truncate text-sm text-foreground">{gap.label}</span>
+                    <div className="order-last col-span-2 h-1 overflow-hidden rounded-full bg-surface-3 sm:order-none sm:col-span-1">
+                      <motion.div
+                        className="h-full rounded-full bg-foreground/70"
+                        initial={{ width: 0 }}
+                        animate={{ width: `${Math.max(4, (gap.unblock_count / maxUnblock) * 100)}%` }}
+                        transition={transition.slow}
+                      />
+                    </div>
+                    <span className="shrink-0 text-right font-mono text-xs text-muted-foreground tabular-nums">
+                      unlocks {gap.unblock_count}
+                      {gap.time_estimate ? ` · ${gap.time_estimate}` : ''}
+                      {gap.cost_estimate ? ` · ${gap.cost_estimate}` : ''}
                     </span>
                   </li>
                 ))}
               </ul>
             )}
-          </section>
+          </Panel>
         </div>
       )}
     </div>

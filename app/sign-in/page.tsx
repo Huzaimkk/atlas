@@ -3,12 +3,14 @@
 import { useState } from 'react'
 import { Suspense } from 'react'
 import { useSearchParams } from 'next/navigation'
-import { ArrowRight, Mail, Quote } from 'lucide-react'
+import { ArrowRight, Mail } from 'lucide-react'
 import { createSupabaseBrowserClient } from '@/lib/supabase-browser'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { cn } from '@/lib/utils'
+import { VerdictBadge } from '@/components/atlas/verdict-badge'
+import Link from 'next/link'
+import { AtlasWordmark } from '@/components/atlas/brand'
 
 function GoogleIcon({ className }: { className?: string }) {
   return (
@@ -71,7 +73,7 @@ function SignInForm() {
         <div className="flex size-10 items-center justify-center rounded-full bg-verdict-ready-bg text-verdict-ready">
           <Mail className="size-5" strokeWidth={1.75} />
         </div>
-        <h1 className="text-xl font-semibold tracking-tight text-foreground">Check your email</h1>
+        <h1 className="display text-3xl text-foreground">Check your email</h1>
         <p className="max-w-sm text-sm text-muted-foreground leading-relaxed">
           We sent a sign-in link to <span className="text-foreground">{email}</span>. Open it on this device to
           continue — it signs you in automatically, no password to remember.
@@ -89,9 +91,9 @@ function SignInForm() {
   return (
     <div className="space-y-6">
       <div className="space-y-1.5">
-        <h1 className="text-xl font-semibold tracking-tight text-foreground">Sign in to Atlas</h1>
+        <h1 className="display text-3xl text-foreground">Sign in to Atlas</h1>
         <p className="text-sm text-muted-foreground">
-          New here? The same form creates your account — the pool fills in the moment you're in.
+          New here? The same form creates your account.
         </p>
       </div>
 
@@ -133,12 +135,9 @@ export default function SignInPage() {
   return (
     <div className="flex min-h-screen w-full">
       <div className="flex w-full flex-col justify-center px-6 py-16 sm:px-12 lg:w-[460px] lg:shrink-0 lg:px-14">
-        <div className="mb-10 flex items-center gap-2">
-          <div className="flex size-7 items-center justify-center rounded-md bg-primary text-primary-foreground font-mono text-xs font-bold">
-            A
-          </div>
-          <span className="text-sm font-semibold tracking-tight text-foreground">Atlas</span>
-        </div>
+        <Link href="/" aria-label="Atlas home" className="mb-12 self-start">
+          <AtlasWordmark />
+        </Link>
 
         <Suspense fallback={null}>
           <SignInForm />
@@ -146,15 +145,9 @@ export default function SignInPage() {
       </div>
 
       <div className="relative hidden flex-1 items-center justify-center overflow-hidden bg-surface p-16 lg:flex">
-        <div
-          className="pointer-events-none absolute inset-0 opacity-40"
-          style={{
-            background:
-              'radial-gradient(ellipse 60% 50% at 30% 20%, rgba(108,99,255,0.25), transparent), radial-gradient(ellipse 50% 40% at 85% 85%, rgba(0,212,170,0.12), transparent)',
-          }}
-        />
+        <div className="graticule pointer-events-none absolute inset-0" aria-hidden="true" />
         <div className="relative max-w-md space-y-6">
-          <p className="text-2xl font-semibold leading-tight tracking-tight text-foreground">
+          <p className="display text-4xl leading-tight text-foreground">
             A position, not a list of links.
           </p>
           <p className="text-sm leading-relaxed text-muted-foreground">
@@ -162,33 +155,21 @@ export default function SignInPage() {
             you, Atlas quotes the rule and the page it came from — never a guess.
           </p>
 
-          <div className="space-y-3 rounded-lg border border-border-strong bg-surface-2/60 p-5">
+          <div className="space-y-4 rounded-xl border border-border-strong bg-background p-6">
             <div className="flex items-start justify-between gap-3">
               <div>
-                <p className="text-sm font-medium text-foreground">{EXAMPLE_VERDICT.title}</p>
+                <p className="display text-xl text-foreground">{EXAMPLE_VERDICT.title}</p>
                 <p className="text-xs text-muted-foreground">{EXAMPLE_VERDICT.institution}</p>
               </div>
-              <span
-                className={cn(
-                  'shrink-0 rounded-md px-2 py-0.5 text-xs font-medium whitespace-nowrap'
-                )}
-                style={{ color: 'var(--verdict-blocked)', background: 'var(--verdict-blocked-bg)' }}
-              >
-                BLOCKED
-              </span>
+              <VerdictBadge verdict="BLOCKED" className="shrink-0" />
             </div>
             <p className="text-xs text-muted-foreground">
               {EXAMPLE_VERDICT.reason} <span className="text-faint-foreground">({EXAMPLE_VERDICT.detail})</span>
             </p>
-            <div className="flex gap-2 rounded-md bg-background/60 p-3">
-              <Quote className="size-3.5 shrink-0 text-faint-foreground" strokeWidth={1.75} />
-              <div className="space-y-1">
-                <p className="font-mono text-2xs leading-relaxed text-muted-foreground">
-                  &ldquo;{EXAMPLE_VERDICT.quote}&rdquo;
-                </p>
-                <p className="font-mono text-2xs text-faint-foreground">{EXAMPLE_VERDICT.source}</p>
-              </div>
-            </div>
+            <blockquote className="border-l-2 border-border-strong pl-4">
+              <p className="source-quote">&ldquo;{EXAMPLE_VERDICT.quote}&rdquo;</p>
+              <footer className="mt-1.5 font-mono text-2xs text-faint-foreground">{EXAMPLE_VERDICT.source}</footer>
+            </blockquote>
           </div>
         </div>
       </div>

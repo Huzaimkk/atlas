@@ -4,29 +4,25 @@ import { motion } from 'motion/react'
 import { RadioTower, ExternalLink, AlertCircle } from 'lucide-react'
 import type { WatchlistLab, WatchlistStatus } from '@/types/atlas'
 import { EmptyState } from '@/components/atlas/empty-state'
+import { PageHeader } from '@/components/atlas/page-header'
 import { cn } from '@/lib/utils'
 
 const STATUS_META: Record<WatchlistStatus, { label: string; className: string }> = {
   watching: { label: 'Watching', className: 'text-verdict-watch' },
   change_detected: { label: 'Change detected', className: 'text-verdict-gap' },
-  stale: { label: 'Stale — past 21-day SLA', className: 'text-faint-foreground' },
+  stale: { label: 'Not checked in over 21 days', className: 'text-faint-foreground' },
 }
 
 export function WatchlistView({ labs }: { labs: WatchlistLab[] }) {
   return (
     <div className="space-y-6">
-      <header>
-        <h1 className="text-2xl font-semibold tracking-tight">Watchlist</h1>
-        <p className="mt-1 text-sm text-muted-foreground">
-          Channel C — lab pages polled weekly and diffed against the last snapshot. Highlighted rows changed since the last fetch.
-        </p>
-      </header>
+      <PageHeader title="Watchlist" description="Lab pages checked weekly for changes. A highlighted lab has changed since the last check." />
 
       {labs.length === 0 ? (
         <EmptyState
           icon={RadioTower}
-          title="No labs being watched yet"
-          description="The watchlist is built from your research fingerprint via Channel C1 — recent publications in your subfields, resolved to a corresponding author and lab URL. It starts at ~50 labs, pilot scale, once Layer 1 is complete."
+          title="No labs on your watchlist yet"
+          description="Atlas will suggest labs from your research areas and check their pages every week for new openings. This is not switched on yet."
         />
       ) : (
         <ul className="space-y-2">
@@ -35,7 +31,7 @@ export function WatchlistView({ labs }: { labs: WatchlistLab[] }) {
             const content = (
               <li
                 className={cn(
-                  'rounded-lg border p-4',
+                  'rounded-lg border bg-surface p-5',
                   lab.status === 'change_detected' ? 'border-verdict-gap/40 bg-verdict-gap-bg' : 'border-border'
                 )}
               >
@@ -54,7 +50,7 @@ export function WatchlistView({ labs }: { labs: WatchlistLab[] }) {
                     )}
                   </div>
                   <div className="flex shrink-0 flex-col items-end gap-1.5">
-                    <span className={cn('font-mono text-2xs font-medium uppercase tracking-wide', meta.className)}>
+                    <span className={cn('text-xs font-medium', meta.className)}>
                       {meta.label}
                     </span>
                     <a
