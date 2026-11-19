@@ -10,6 +10,7 @@ import { seedRequiredDocuments } from '@/lib/application-documents'
 import { formatDeadline, APPLICATION_STATUS_LABELS, APPLICATION_STATUS_ORDER } from '@/lib/atlas-format'
 import { cn } from '@/lib/utils'
 import { useReadOnly } from '@/components/atlas/read-only'
+import { ApplyButton } from '@/components/atlas/apply-button'
 import {
   Select,
   SelectContent,
@@ -151,6 +152,7 @@ export function ApplicationsView({
                 <TableHead>Status</TableHead>
                 <TableHead>Since</TableHead>
                 <TableHead>Documents</TableHead>
+                <TableHead className="w-0"><span className="sr-only">Apply</span></TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -173,7 +175,7 @@ export function ApplicationsView({
                             <ChevronRight className="size-3.5 text-muted-foreground" strokeWidth={1.75} />
                           ))}
                       </TableCell>
-                      <TableCell className="font-medium text-foreground">
+                      <TableCell className="min-w-56 max-w-lg whitespace-normal font-medium text-foreground">
                         {row.opp.title}
                         <p className="text-xs font-normal text-muted-foreground">{row.opp.institution}</p>
                       </TableCell>
@@ -202,11 +204,14 @@ export function ApplicationsView({
                       <TableCell className="font-mono text-2xs text-muted-foreground">
                         {docs.length > 0 ? `${satisfiedCount}/${docs.length}` : '—'}
                       </TableCell>
+                      <TableCell className="w-0 text-right">
+                        <ApplyButton opp={row.opp} />
+                      </TableCell>
                     </TableRow>
                     {isOpen && docs.length > 0 && (
                       <TableRow key={`${row.opp.id}-docs`} className="bg-surface-2/40">
                         <TableCell />
-                        <TableCell colSpan={5}>
+                        <TableCell colSpan={6}>
                           <ul className="space-y-1.5 py-1">
                             {docs.map((doc) => (
                               <li key={doc.label} className="flex items-center gap-2 text-xs">

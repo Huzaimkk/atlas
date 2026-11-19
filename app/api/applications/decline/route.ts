@@ -56,5 +56,15 @@ export async function POST(req: Request) {
     if (closureErr) console.error('[decline] gap_closures insert failed:', closureErr.message)
   }
 
-  return NextResponse.json({ application })
+  const { data: opp } = await supabaseAdmin.from('opportunities').select('title').eq('id', opportunity_id).maybeSingle()
+  const { error: logError } = await supabaseAdmin.from('command_log').insert({
+    user_id: userId,
+    prompt: `Applications: ${opp?.title ?? opportunity_id} — ${existing?.status ?? 'untracked'} → withdrawn (declined)`,
+    actions: [{ tool: 'decline_opportunity', input: { opportunity_id, from: existing?.status ?? null, to: 'withdrawn', at: now }, output: { application_id: application.id, gaps_closed: openGaps?.length ?? 0 } }],
+    status: 'confirmed',
+    confirmed_at: now,
+  })
+  if (logError) console.error('[decline] command_log insert failed:', logError.message)
+
+  return NextResponse.json({ application, logged: !logError })
 }

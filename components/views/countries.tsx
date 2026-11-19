@@ -3,12 +3,13 @@
 import { useMemo, useState } from 'react'
 import { AnimatePresence, motion } from 'motion/react'
 import { ChevronDown, Globe2, Search } from 'lucide-react'
-import type { Opportunity, Track, Verdict, VerdictType } from '@/types/atlas'
+import type { Application, Opportunity, Track, Verdict, VerdictType } from '@/types/atlas'
 import { EmptyState } from '@/components/atlas/empty-state'
 import { PageHeader } from '@/components/atlas/page-header'
 import { CountUp } from '@/components/atlas/count-up'
 import { VerdictBadge } from '@/components/atlas/verdict-badge'
 import { OpportunityDetail } from '@/components/views/pool'
+import { ApplyButton } from '@/components/atlas/apply-button'
 import { Input } from '@/components/ui/input'
 import { Switch } from '@/components/ui/switch'
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@/components/ui/sheet'
@@ -116,9 +117,17 @@ function Chip({ selected, onClick, children, count, markerId }: { selected: bool
 function OpportunityRow({ row, onOpen }: { row: Row; onOpen: (o: Opportunity) => void }) {
   const { opp, verdict, days } = row
   return (
-    <button
+    <div
+      role="button"
+      tabIndex={0}
       onClick={() => onOpen(opp)}
-      className="grid w-full grid-cols-[minmax(0,1fr)_auto] items-center gap-x-4 gap-y-1 px-5 py-3 text-left transition-colors duration-150 hover:bg-surface-2 sm:grid-cols-[minmax(0,1fr)_9rem_8.5rem]"
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault()
+          onOpen(opp)
+        }
+      }}
+      className="grid w-full cursor-pointer grid-cols-[minmax(0,1fr)_auto] items-center gap-x-4 gap-y-2 px-5 py-3 text-left transition-colors duration-150 hover:bg-surface-2 sm:grid-cols-[minmax(0,1fr)_9rem_8.5rem_6.5rem]"
     >
       <span className="min-w-0">
         <span className="block truncate text-sm text-foreground">{opp.title}</span>
@@ -131,7 +140,10 @@ function OpportunityRow({ row, onOpen }: { row: Row; onOpen: (o: Opportunity) =>
         {opp.deadline ? formatDeadline(opp.deadline) : 'No date'}
       </span>
       <span className="flex justify-end">{verdict ? <VerdictBadge verdict={verdict.type} /> : <span className="text-xs text-faint-foreground">Not checked</span>}</span>
-    </button>
+      <span className="col-span-2 flex justify-start sm:col-span-1 sm:justify-end">
+        <ApplyButton opp={opp} />
+      </span>
+    </div>
   )
 }
 
@@ -168,7 +180,7 @@ function UniversityCard({ name, rows, open, onToggle, onOpen }: { name: string; 
   )
 }
 
-export function CountriesView({ opportunities, verdicts }: { opportunities: Opportunity[]; verdicts: Verdict[] }) {
+export function CountriesView({ opportunities, verdicts, applications = [] }: { opportunities: Opportunity[]; verdicts: Verdict[]; applications?: Application[] }) {
   const [country, setCountry] = useState('United States')
   const [area, setArea] = useState<AreaId>('universities')
   const [query, setQuery] = useState('')
@@ -393,7 +405,7 @@ export function CountriesView({ opportunities, verdicts }: { opportunities: Oppo
           </SheetHeader>
           {selected && (
             <div className="px-4 pb-6 pt-10">
-              <OpportunityDetail opp={selected} verdict={verdictById.get(selected.id)} />
+              <OpportunityDetail opp={selected} verdict={verdictById.get(selected.id)} application={applications.find((a) => a.opportunity_id === selected.id)} />
             </div>
           )}
         </SheetContent>

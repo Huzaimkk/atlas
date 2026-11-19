@@ -1,0 +1,26 @@
+-- Atlas — application_details: how to apply, as facts, separate from eligibility.
+--
+-- Letter deadlines, transcript policy, fees and the submission portal are
+-- facts about the application process, not conditions a person must meet.
+-- Stored as eligibility_rules they would each become a "record" gap
+-- (lib/diagnostic-engine.ts turns every discretionary rule into one),
+-- inventing missing items that do not exist. This column is read by the UI
+-- only; the diagnostic engine never looks at it.
+--
+-- Shape (types/atlas.ts ApplicationDetails):
+--   {
+--     portal_url:      text | null   -- where the application is submitted
+--     portal_status:   'verified' | 'unverified'
+--     checked_on:      date
+--     items: [{
+--       topic:   'deadline' | 'letters' | 'portal' | 'transcripts' | 'english' | 'fee' | 'fee_waiver',
+--       status:  'verified' | 'unverified' | 'conflicting' | 'passed',
+--       summary: text,
+--       quotes:  [{ text, source_url }],   -- two or more when status = 'conflicting'
+--       note:    text | null
+--     }]
+--   }
+--
+-- Additive and nullable: existing rows and code paths are unaffected.
+
+alter table opportunities add column if not exists application_details jsonb;

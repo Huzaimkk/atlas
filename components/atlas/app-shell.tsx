@@ -410,6 +410,8 @@ export function AppShell({ data, email = null, demo = false }: { data?: AtlasDat
                       opportunities={opportunities}
                       verdicts={verdicts}
                       gaps={gaps}
+                      actions={actions}
+                      onOpenGaps={() => navigate('gap-queue')}
                       applications={applications}
                       gapClosures={gapClosures}
                       referees={referees}
@@ -423,7 +425,7 @@ export function AppShell({ data, email = null, demo = false }: { data?: AtlasDat
                   {active === 'applications' && <ApplicationsView opportunities={opportunities} applications={applications} profile={profile} />}
                   {active === 'gap-queue' && <GapQueueView gaps={gaps} />}
                   {active === 'pool' && <PoolView opportunities={opportunities} verdicts={verdicts} applications={applications} />}
-                  {active === 'countries' && <CountriesView opportunities={opportunities} verdicts={verdicts} />}
+                  {active === 'countries' && <CountriesView opportunities={opportunities} verdicts={verdicts} applications={applications} />}
                   {active === 'sections' && <SectionsView opportunities={opportunities} verdicts={verdicts} />}
                   {active === 'watchlist' && <WatchlistView labs={watchlist} />}
                   {active === 'inbox' && <InboxView leads={inbox} />}

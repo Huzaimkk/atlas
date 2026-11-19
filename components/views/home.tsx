@@ -8,6 +8,7 @@ import { GAP_TYPE_LABELS } from '@/types/atlas'
 import { EmptyState } from '@/components/atlas/empty-state'
 import { PageHeader, SectionTitle } from '@/components/atlas/page-header'
 import { CountUp } from '@/components/atlas/count-up'
+import { UnlockCount } from '@/components/atlas/unlock-count'
 import { PostDegreeHoursChart } from '@/components/charts/post-degree-hours'
 import { DeadlineTimelineChart } from '@/components/charts/deadline-timeline'
 import { DURATION, EASE, transition } from '@/lib/motion'
@@ -111,7 +112,6 @@ function Position({ verdicts }: { verdicts: Verdict[] }) {
 function ProfileEnhancer({ actions, onOpenGaps }: { actions: AggregatedAction[]; onOpenGaps?: () => void }) {
   const top = useMemo(() => [...actions].sort((a, b) => b.unblock_count - a.unblock_count).slice(0, ENHANCER_SIZE), [actions])
   const totalUnlocked = useMemo(() => new Set(top.flatMap((a) => a.opportunity_ids)).size, [top])
-  const max = top[0]?.unblock_count ?? 1
 
   if (top.length === 0) {
     return (
@@ -145,7 +145,7 @@ function ProfileEnhancer({ actions, onOpenGaps }: { actions: AggregatedAction[];
             initial={{ opacity: 0, y: 4 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ ...transition.base, delay: 0.08 + i * 0.05 }}
-            className="grid grid-cols-[1.5rem_minmax(0,1fr)_auto] items-center gap-x-3 gap-y-1.5 border-t border-border py-3 first:border-t-0 sm:grid-cols-[1.5rem_minmax(0,18rem)_minmax(0,1fr)_auto]"
+            className="grid grid-cols-[1.5rem_minmax(0,1fr)_auto] items-center gap-x-3 gap-y-1.5 border-t border-border py-3 first:border-t-0"
           >
             <span className="font-mono text-xs text-faint-foreground tabular-nums">{i + 1}</span>
             <div className="min-w-0">
@@ -156,17 +156,7 @@ function ProfileEnhancer({ actions, onOpenGaps }: { actions: AggregatedAction[];
                 {action.cost_estimate ? ` · ${action.cost_estimate}` : ''}
               </p>
             </div>
-            <div className="order-last col-span-3 h-1 overflow-hidden rounded-full bg-surface-3 sm:order-none sm:col-span-1">
-              <motion.div
-                className="h-full rounded-full bg-foreground/70"
-                initial={{ width: 0 }}
-                animate={{ width: `${Math.max(4, (action.unblock_count / max) * 100)}%` }}
-                transition={{ ...transition.slow, delay: 0.12 + i * 0.05 }}
-              />
-            </div>
-            <span className="shrink-0 text-right font-mono text-xs text-muted-foreground tabular-nums">
-              unlocks <span className="text-foreground">{action.unblock_count}</span>
-            </span>
+            <UnlockCount count={action.unblock_count} className="justify-self-end" />
           </motion.li>
         ))}
       </ol>

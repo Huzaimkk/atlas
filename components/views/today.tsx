@@ -3,14 +3,17 @@
 import { useMemo, useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import { AnimatePresence, motion } from 'motion/react'
-import { AlertTriangle, Clock, Hourglass, Target } from 'lucide-react'
-import type { AggregatedGap, Application, GapClosure, MissedDeadline, Opportunity, Referee, RefereeStatus, Verdict } from '@/types/atlas'
+import { AlertTriangle, ArrowRight, CalendarClock, ChevronDown, Clock, Hourglass, Target } from 'lucide-react'
+import type { AggregatedAction, AggregatedGap, Application, GapClosure, MissedDeadline, Opportunity, Referee, RefereeStatus, Verdict } from '@/types/atlas'
 import { APPLICATION_TERMINAL_STATUSES } from '@/types/atlas'
 import { EmptyState } from '@/components/atlas/empty-state'
 import { PageHeader, SectionTitle } from '@/components/atlas/page-header'
 import { CountUp } from '@/components/atlas/count-up'
 import { useReadOnly } from '@/components/atlas/read-only'
 import { VerdictBadge } from '@/components/atlas/verdict-badge'
+import { ApplyButton } from '@/components/atlas/apply-button'
+import { UnlockCount } from '@/components/atlas/unlock-count'
+import { GAP_TYPE_LABELS } from '@/types/atlas'
 import { daysUntil, daysSince, formatDeadline, APPLICATION_STATUS_LABELS } from '@/lib/atlas-format'
 import { disclose, transition } from '@/lib/motion'
 import { cn } from '@/lib/utils'
@@ -32,6 +35,8 @@ const OVERDUE_THRESHOLD_DAYS = 14
 // candidates are on the roster, but the target slot count is fixed at 3
 // regardless of how many candidates exist.
 const REFEREE_TARGET = 3
+// Real data puts 40+ rows in this block; the rest are one click away, never dropped.
+const READY_PREVIEW = 8
 
 const REFEREE_STATUS_LABELS: Record<RefereeStatus, string> = {
   not_contacted: 'Not contacted',
@@ -95,6 +100,174 @@ function Quiet({ children }: { children: React.ReactNode }) {
   return <p className="text-sm text-faint-foreground">{children}</p>
 }
 
+
+/**
+ * The single most useful sentence the system produces: the one action
+ * that opens the most opportunities. It leads the page, with a button that
+ * shows exactly which opportunities it opens.
+ */
+function TopAction({
+  action,
+  opportunities,
+  verdictByOpp,
+  onOpenGaps,
+}: {
+  action: AggregatedAction
+  opportunities: Map<string, Opportunity>
+  verdictByOpp: Map<string, Verdict>
+  onOpenGaps?: () => void
+}) {
+  const [open, setOpen] = useState(false)
+  const rank = (d: number | null) => (d !== null && d >= 0 ? d : 1e9)
+  const unlocked = action.opportunity_ids
+    .map((id) => opportunities.get(id))
+    .filter((o): o is Opportunity => !!o)
+    .map((opp) => ({ opp, verdict: verdictByOpp.get(opp.id), days: daysUntil(opp.deadline) }))
+    .sort((a, b) => rank(a.days) - rank(b.days))
+  const nextDeadline = unlocked.find((u) => u.days !== null && u.days >= 0)
+
+  return (
+    <section className="overflow-hidden rounded-xl border border-border-strong bg-surface">
+      <div className="flex flex-wrap items-end justify-between gap-x-8 gap-y-5 p-6 sm:p-7">
+        <div className="min-w-0 max-w-2xl space-y-3">
+          <p className="text-xs text-muted-foreground">The one thing that opens the most</p>
+          <p className="display text-3xl leading-tight text-foreground">{action.action_label}</p>
+          <div className="flex flex-wrap items-center gap-x-5 gap-y-2">
+            <UnlockCount count={action.unblock_count} />
+            <span className="text-xs text-muted-foreground">
+              {GAP_TYPE_LABELS[action.type]}
+              {action.time_estimate ? ` · ${action.time_estimate}` : ''}
+              {action.cost_estimate ? ` · ${action.cost_estimate}` : ''}
+            </span>
+          </div>
+          {nextDeadline && (
+            <p className="text-sm text-muted-foreground">
+              The soonest of them closes in{' '}
+              <span className={cn('font-mono', (nextDeadline.days ?? 99) <= 14 ? 'text-verdict-late' : 'text-foreground')}>{nextDeadline.days}d</span>:{' '}
+              {nextDeadline.opp.title}.
+            </p>
+          )}
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <button
+            onClick={() => setOpen((o) => !o)}
+            aria-expanded={open}
+            className="inline-flex h-10 items-center gap-2 rounded-md bg-primary px-4 text-sm font-medium text-primary-foreground transition-opacity hover:opacity-90"
+          >
+            {open ? 'Hide' : 'Show'} the {action.unblock_count} it opens
+            <motion.span animate={{ rotate: open ? 180 : 0 }} transition={transition.base}>
+              <ChevronDown className="size-4" strokeWidth={2} />
+            </motion.span>
+          </button>
+          {onOpenGaps && (
+            <button
+              onClick={onOpenGaps}
+              className="inline-flex h-10 items-center gap-1.5 rounded-md border border-border-strong px-4 text-sm text-foreground transition-colors hover:bg-surface-2"
+            >
+              All gaps
+              <ArrowRight className="size-3.5" strokeWidth={1.75} />
+            </button>
+          )}
+        </div>
+      </div>
+      <AnimatePresence initial={false}>
+        {open && (
+          <motion.div variants={disclose} initial="closed" animate="open" exit="closed" className="overflow-hidden">
+            <ul className="divide-y divide-border border-t border-border">
+              {unlocked.map(({ opp, verdict, days }) => (
+                <li key={opp.id} className="flex flex-wrap items-center gap-x-4 gap-y-2 px-6 py-3 sm:px-7">
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm text-foreground">{opp.title}</p>
+                    <p className="truncate text-xs text-muted-foreground">{opp.institution}</p>
+                  </div>
+                  <span className={cn('w-20 text-right font-mono text-xs tabular-nums', days !== null && days >= 0 && days <= 14 ? 'text-verdict-late' : 'text-muted-foreground')}>
+                    {days === null ? 'no date' : days < 0 ? 'closed' : days === 0 ? 'today' : `${days}d`}
+                  </span>
+                  {verdict && <VerdictBadge verdict={verdict.type} />}
+                  <ApplyButton opp={opp} />
+                </li>
+              ))}
+            </ul>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </section>
+  )
+}
+
+type DeadlineRow = { opp: Opportunity; verdict: Verdict | undefined; days: number | null }
+
+/**
+ * Deadlines grouped by day, soonest first. The nearest day is the headline
+ * because that is the clock the whole week runs on.
+ */
+function DeadlineCountdown({ rows }: { rows: DeadlineRow[] }) {
+  const byDay = new Map<string, DeadlineRow[]>()
+  for (const r of rows) {
+    const key = r.opp.deadline as string
+    if (!byDay.has(key)) byDay.set(key, [])
+    byDay.get(key)!.push(r)
+  }
+  const days = [...byDay.entries()].sort((a, b) => a[0].localeCompare(b[0]))
+  if (days.length === 0) {
+    return (
+      <section className="rounded-lg border border-border bg-surface p-5">
+        <SectionTitle icon={CalendarClock}>Deadlines</SectionTitle>
+        <p className="mt-2 text-sm text-faint-foreground">Nothing you can still apply to closes in the next {DEADLINE_WINDOW_DAYS} days.</p>
+      </section>
+    )
+  }
+  const [[firstDate, firstRows], ...rest] = days
+  const firstDays = firstRows[0].days ?? 0
+  const label = (iso: string) => new Date(iso + 'T00:00:00').toLocaleDateString('en-US', { weekday: 'short', month: 'long', day: 'numeric' })
+
+  return (
+    <section className="overflow-hidden rounded-lg border border-border bg-surface">
+      <div className="grid gap-x-8 gap-y-4 p-6 sm:grid-cols-[auto_minmax(0,1fr)]">
+        <div className="sm:min-w-44">
+          <p className="text-xs text-muted-foreground">Next deadline</p>
+          <p className={cn('mt-1 font-mono text-5xl leading-none tabular-nums', firstDays <= 7 ? 'text-verdict-late' : 'text-foreground')}>
+            {firstDays}
+            <span className="ml-1 text-lg text-muted-foreground">{firstDays === 1 ? 'day' : 'days'}</span>
+          </p>
+          <p className="mt-2 text-sm text-foreground">{label(firstDate)}</p>
+          <p className="text-xs text-muted-foreground">
+            {firstRows.length} {firstRows.length === 1 ? 'programme closes' : 'programmes close'} that day
+          </p>
+        </div>
+        <ul className="divide-y divide-border self-start rounded-md border border-border">
+          {firstRows.map(({ opp, verdict }) => (
+            <li key={opp.id} className="flex flex-wrap items-center gap-x-3 gap-y-2 px-4 py-2.5">
+              <span className="min-w-0 flex-1">
+                <span className="block truncate text-sm text-foreground">{opp.title}</span>
+                <span className="block truncate text-xs text-muted-foreground">{opp.institution}</span>
+              </span>
+              {verdict && <VerdictBadge verdict={verdict.type} />}
+              <ApplyButton opp={opp} />
+            </li>
+          ))}
+        </ul>
+      </div>
+      {rest.length > 0 && (
+        <div className="border-t border-border px-6 py-4">
+          <p className="mb-2 text-xs text-muted-foreground">After that, inside {DEADLINE_WINDOW_DAYS} days</p>
+          <ul className="space-y-1.5">
+            {rest.map(([date, group]) => (
+              <li key={date} className="grid grid-cols-[3.5rem_minmax(0,1fr)] items-baseline gap-x-3 text-sm">
+                <span className="font-mono text-xs text-muted-foreground tabular-nums">{group[0].days}d</span>
+                <span className="min-w-0 truncate text-foreground">
+                  <span className="text-muted-foreground">{label(date)}: </span>
+                  {group.map((g) => g.opp.title).join(', ')}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+    </section>
+  )
+}
+
 /**
  * Today — the default view. Permanent counters sit above the four
  * accountability blocks: the counters never reset and are never hidden,
@@ -104,14 +277,18 @@ export function TodayView({
   opportunities,
   verdicts,
   gaps,
+  actions = [],
   applications,
   gapClosures,
   referees,
   missedDeadlines,
+  onOpenGaps,
 }: {
   opportunities: Opportunity[]
   verdicts: Verdict[]
   gaps: AggregatedGap[]
+  actions?: AggregatedAction[]
+  onOpenGaps?: () => void
   applications: Application[]
   gapClosures: GapClosure[]
   referees: Referee[]
@@ -122,6 +299,7 @@ export function TodayView({
   const [, startTransition] = useTransition()
   const [openCounter, setOpenCounter] = useState<CounterId | null>(null)
   const [pendingReferee, setPendingReferee] = useState<string | null>(null)
+  const [showAllReady, setShowAllReady] = useState(false)
 
   const oppById = new Map(opportunities.map((o) => [o.id, o]))
   const verdictByOpp = new Map(verdicts.map((v) => [v.opportunity_id, v]))
@@ -146,10 +324,16 @@ export function TodayView({
     .map((r) => ({ ...r, ageDays: daysSince(r.verdict.ready_since) ?? 0, daysLeft: daysUntil(r.opp.deadline) }))
     .sort((a, b) => b.ageDays - a.ageDays)
 
-  const topGaps = [...gaps].sort((a, b) => b.unblock_count - a.unblock_count).slice(0, 3)
-  const maxUnblock = topGaps[0]?.unblock_count ?? 1
+  // Ranked by satisfying action (one IELTS sitting clears many differently
+  // worded English rules), falling back to per-requirement gaps when no
+  // action ranking exists.
+  const rankedActions: AggregatedAction[] = (actions.length > 0 ? [...actions] : gaps.map((g) => ({ ...g, action_label: g.label }))).sort(
+    (a, b) => b.unblock_count - a.unblock_count
+  )
+  const topAction = rankedActions[0]
+  const topGaps = rankedActions.slice(1, 4)
 
-  const nothingAtAll = deadlinesSoon.length === 0 && overdueCommitments.length === 0 && agingReady.length === 0 && topGaps.length === 0
+  const nothingAtAll = overdueCommitments.length === 0 && agingReady.length === 0 && topGaps.length === 0
 
   // Counters
   const monthCutoff = useMemo(() => monthStart().toISOString(), [])
@@ -184,6 +368,10 @@ export function TodayView({
           {new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}
         </p>
       </PageHeader>
+
+      {topAction && <TopAction action={topAction} opportunities={oppById} verdictByOpp={verdictByOpp} onOpenGaps={onOpenGaps} />}
+
+      <DeadlineCountdown rows={deadlinesSoon} />
 
       {/* Permanent counters — never reset, never hidden, independent of the blocks below. */}
       <div className="overflow-hidden rounded-lg border border-border bg-surface">
@@ -296,37 +484,11 @@ export function TodayView({
       {nothingAtAll ? (
         <EmptyState
           icon={Clock}
-          title="Nothing needs you today"
-          description="No deadline inside 21 days, nothing you started has stalled, nothing ready is sitting untouched, and there are no open gaps."
+          title="Nothing else needs you today"
+          description="Nothing you started has stalled, nothing ready is sitting untouched, and there are no other open gaps."
         />
       ) : (
         <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
-          <Panel>
-            <SectionTitle icon={Clock} count={deadlinesSoon.length}>
-              Closing in the next {DEADLINE_WINDOW_DAYS} days
-            </SectionTitle>
-            {deadlinesSoon.length === 0 ? (
-              <Quiet>Nothing closes soon.</Quiet>
-            ) : (
-              <ul className="divide-y divide-border">
-                {deadlinesSoon.map(({ opp, verdict, days }) => (
-                  <li key={opp.id} className="flex items-center justify-between gap-3 py-2.5">
-                    <div className="min-w-0">
-                      <p className="truncate text-sm text-foreground">{opp.title}</p>
-                      <p className="truncate text-xs text-muted-foreground">{opp.institution}</p>
-                    </div>
-                    <div className="flex shrink-0 items-center gap-3">
-                      {verdict && <VerdictBadge verdict={verdict.type} />}
-                      <span className={cn('w-12 text-right font-mono text-xs tabular-nums', (days ?? 99) <= 7 ? 'text-verdict-late' : 'text-muted-foreground')}>
-                        {days === 0 ? 'today' : `${days}d`}
-                      </span>
-                    </div>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </Panel>
-
           <Panel>
             <SectionTitle icon={AlertTriangle} count={overdueCommitments.length}>
               Started, then stalled
@@ -356,7 +518,7 @@ export function TodayView({
               <Quiet>Nothing ready has been left sitting.</Quiet>
             ) : (
               <ul className="divide-y divide-border">
-                {agingReady.map(({ opp, ageDays, daysLeft }) => (
+                {(showAllReady ? agingReady : agingReady.slice(0, READY_PREVIEW)).map(({ opp, ageDays, daysLeft }) => (
                   <li key={opp.id} className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1 py-2.5 text-sm">
                     <span className="min-w-0 truncate text-foreground">{opp.title}</span>
                     <span className="shrink-0 font-mono text-xs text-muted-foreground tabular-nums">
@@ -367,30 +529,30 @@ export function TodayView({
                 ))}
               </ul>
             )}
+            {agingReady.length > READY_PREVIEW && (
+              <button
+                onClick={() => setShowAllReady((v) => !v)}
+                className="text-sm text-muted-foreground underline-offset-2 transition-colors hover:text-foreground hover:underline"
+              >
+                {showAllReady ? `Show the first ${READY_PREVIEW}` : `Show all ${agingReady.length}`}
+              </button>
+            )}
           </Panel>
 
           <Panel className="lg:col-span-2">
-            <SectionTitle icon={Target}>The three gaps worth closing first</SectionTitle>
+            <SectionTitle icon={Target}>After that, the next three</SectionTitle>
             {topGaps.length === 0 ? (
-              <Quiet>No open gaps.</Quiet>
+              <Quiet>No other open gaps.</Quiet>
             ) : (
               <ul className="space-y-3 pt-1">
                 {topGaps.map((gap) => (
-                  <li key={gap.id} className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-4 gap-y-1.5 sm:grid-cols-[minmax(0,16rem)_minmax(0,1fr)_auto]">
-                    <span className="truncate text-sm text-foreground">{gap.label}</span>
-                    <div className="order-last col-span-2 h-1 overflow-hidden rounded-full bg-surface-3 sm:order-none sm:col-span-1">
-                      <motion.div
-                        className="h-full rounded-full bg-foreground/70"
-                        initial={{ width: 0 }}
-                        animate={{ width: `${Math.max(4, (gap.unblock_count / maxUnblock) * 100)}%` }}
-                        transition={transition.slow}
-                      />
-                    </div>
-                    <span className="shrink-0 text-right font-mono text-xs text-muted-foreground tabular-nums">
-                      unlocks {gap.unblock_count}
-                      {gap.time_estimate ? ` · ${gap.time_estimate}` : ''}
+                  <li key={gap.id} className="flex flex-wrap items-center justify-between gap-x-6 gap-y-1.5">
+                    <span className="min-w-0 flex-1 truncate text-sm text-foreground">{gap.action_label}</span>
+                    <span className="hidden text-xs text-muted-foreground md:inline">
+                      {gap.time_estimate}
                       {gap.cost_estimate ? ` · ${gap.cost_estimate}` : ''}
                     </span>
+                    <UnlockCount count={gap.unblock_count} />
                   </li>
                 ))}
               </ul>

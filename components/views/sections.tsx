@@ -8,6 +8,7 @@ import { PageHeader } from '@/components/atlas/page-header'
 import { VerdictBadge, TierBadge } from '@/components/atlas/verdict-badge'
 import { formatDeadline } from '@/lib/atlas-format'
 import { cn } from '@/lib/utils'
+import { ApplyButton } from '@/components/atlas/apply-button'
 
 /**
  * Spec §4.3's five groups are a navigation convenience over the existing
@@ -90,6 +91,7 @@ export function SectionsView({ opportunities, verdicts }: { opportunities: Oppor
                   {formatDeadline(o.deadline)}
                 </span>
                 {v ? <VerdictBadge verdict={v.type} className="shrink-0" /> : null}
+                <ApplyButton opp={o} />
               </li>
             )
           })}

@@ -1,7 +1,7 @@
 'use client'
 
 import { useMemo, useState } from 'react'
-import { ArrowUpDown, ChevronDown, ChevronRight, Database, Search, PenOff, ExternalLink, Quote, X } from 'lucide-react'
+import { ArrowUpDown, ChevronDown, ChevronRight, Database, Search, PenOff, Quote, X } from 'lucide-react'
 import {
   CATEGORY_LABELS,
   type Application,
@@ -18,6 +18,9 @@ import { VerdictBadge, TierBadge } from '@/components/atlas/verdict-badge'
 import { formatDeadline, formatFunding, STATUS_LABELS, hasAiWritingPolicy } from '@/lib/atlas-format'
 import { cn } from '@/lib/utils'
 import { useReadOnly } from '@/components/atlas/read-only'
+import { ApplyButton } from '@/components/atlas/apply-button'
+import { ApplicationStatusControl } from '@/components/atlas/application-status'
+import { ApplicationFacts } from '@/components/atlas/application-facts'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import {
@@ -83,12 +86,14 @@ function sectionFor(opp: Opportunity, verdict: Verdict | undefined): SectionId {
 export function OpportunityDetail({
   opp,
   verdict,
+  application,
   declined,
   onDecline,
   declining,
 }: {
   opp: Opportunity
   verdict: Verdict | undefined
+  application?: Application | null
   declined?: boolean
   declining?: boolean
   /** Omit to hide the Decline control (read-only contexts). */
@@ -196,15 +201,17 @@ export function OpportunityDetail({
         </div>
       )}
 
-      <div className="flex gap-2 pt-2">
-        {opp.apply_url && (
-          <Button asChild variant="secondary" className="flex-1">
-            <a href={opp.apply_url} target="_blank" rel="noreferrer">
-              View programme page
-              <ExternalLink className="size-3.5" />
-            </a>
-          </Button>
-        )}
+      <ApplicationFacts details={opp.application_details} />
+
+      <div className="space-y-3 rounded-lg border border-border bg-surface-2/40 p-4">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <p className="text-sm text-foreground">Your application</p>
+          <ApplyButton opp={opp} size="md" />
+        </div>
+        <ApplicationStatusControl opportunityId={opp.id} application={application} />
+      </div>
+
+      <div className="flex gap-2">
         {onDecline && (
           <Button variant="outline" onClick={onDecline} disabled={readOnly || declined || declining} className="shrink-0">
             <X className="size-3.5" />
@@ -238,6 +245,7 @@ export function PoolView({
   const [decliningId, setDecliningId] = useState<string | null>(null)
 
   const verdictById = useMemo(() => new Map(verdicts.map((v) => [v.opportunity_id, v])), [verdicts])
+  const applicationByOpp = useMemo(() => new Map(applications.map((a) => [a.opportunity_id, a])), [applications])
 
   const filtered = useMemo(() => {
     let rows = opportunities
@@ -396,6 +404,7 @@ export function PoolView({
                               {/* Verdict sits next to the title: it is the answer, so it never scrolls out of view. */}
                               <TableHead>Title</TableHead>
                               <TableHead>Verdict</TableHead>
+                              <TableHead className="w-0"><span className="sr-only">Apply</span></TableHead>
                               <TableHead>Institution</TableHead>
                               <TableHead>Deadline</TableHead>
                               <TableHead>Tier</TableHead>
@@ -412,7 +421,7 @@ export function PoolView({
                                   className={cn('cursor-pointer', section.id === 'past' && 'opacity-70')}
                                   onClick={() => setSelected(o)}
                                 >
-                                  <TableCell className="font-medium text-foreground">
+                                  <TableCell className="min-w-56 max-w-md whitespace-normal font-medium text-foreground">
                                     <span className="flex items-center gap-1.5">
                                       {o.title}
                                       {hasAiWritingPolicy(o.ai_writing_policy) && (
@@ -423,7 +432,10 @@ export function PoolView({
                                     </span>
                                   </TableCell>
                                   <TableCell>{v ? <VerdictBadge verdict={v.type as VerdictType} /> : '—'}</TableCell>
-                                  <TableCell className="text-muted-foreground">{o.institution}</TableCell>
+                                  <TableCell className="w-0 text-right">
+                                    <ApplyButton opp={o} />
+                                  </TableCell>
+                                  <TableCell className="max-w-56 whitespace-normal text-muted-foreground">{o.institution}</TableCell>
                                   <TableCell className="font-mono text-xs text-muted-foreground">
                                     {formatDeadline(o.deadline)}
                                   </TableCell>
@@ -457,6 +469,7 @@ export function PoolView({
               <OpportunityDetail
                 opp={selected}
                 verdict={verdictById.get(selected.id)}
+                application={applicationByOpp.get(selected.id)}
                 declined={declinedIds.has(selected.id)}
                 declining={decliningId === selected.id}
                 onDecline={() => decline(selected.id)}

@@ -1,13 +1,13 @@
 'use client'
 
 import { AnimatePresence, motion } from 'motion/react'
-import { ListChecks, ExternalLink, AlertTriangle, PenOff } from 'lucide-react'
+import { ListChecks, AlertTriangle, PenOff } from 'lucide-react'
+import { ApplyButton } from '@/components/atlas/apply-button'
 import type { Opportunity, Verdict } from '@/types/atlas'
 import { EmptyState } from '@/components/atlas/empty-state'
 import { PageHeader } from '@/components/atlas/page-header'
 import { VerdictBadge, TierBadge } from '@/components/atlas/verdict-badge'
 import { formatDeadline, formatFunding, urgencyBand, hasAiWritingPolicy } from '@/lib/atlas-format'
-import { Button } from '@/components/ui/button'
 
 type Row = { verdict: Verdict; opp: Opportunity }
 
@@ -68,13 +68,7 @@ function RowItem({ verdict, opp }: Row) {
       <div className="w-16 shrink-0 text-right font-mono text-2xs text-muted-foreground">{fitLabel(verdict.fit_score)}</div>
       <div className="w-32 shrink-0 text-right font-mono text-xs text-muted-foreground">{formatDeadline(opp.deadline)}</div>
       <VerdictBadge verdict={verdict.type} className="shrink-0" />
-      {opp.apply_url && (
-        <Button asChild size="icon" variant="ghost" className="size-7 shrink-0">
-          <a href={opp.apply_url} target="_blank" rel="noreferrer">
-            <ExternalLink className="size-3.5" />
-          </a>
-        </Button>
-      )}
+      <ApplyButton opp={opp} />
     </motion.li>
   )
 }

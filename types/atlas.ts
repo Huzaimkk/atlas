@@ -179,6 +179,34 @@ export interface Opportunity {
   ai_writing_policy?: string
   /** A matching row from the source file's Corrections sheet, applied as an override annotation, not a new row. */
   verified_correction?: string
+  /** How to apply — portal, letters, transcripts, fees. Facts, never conditions: the engine ignores it. See migration 0015. */
+  application_details?: ApplicationDetails | null
+}
+
+export type ApplicationTopic = 'deadline' | 'letters' | 'portal' | 'transcripts' | 'english' | 'fee' | 'fee_waiver'
+
+/**
+ * 'unverified' means the page was not read, not that it says nothing —
+ * never render it as blank. 'conflicting' carries two or more quotes and
+ * deliberately does not pick a side. 'passed' is a dated window (e.g. a
+ * fee-waiver request deadline) that has already closed.
+ */
+export type ApplicationFactStatus = 'verified' | 'unverified' | 'conflicting' | 'passed'
+
+export interface ApplicationFact {
+  topic: ApplicationTopic
+  status: ApplicationFactStatus
+  summary: string
+  quotes: { text: string; source_url: string }[]
+  note?: string | null
+}
+
+export interface ApplicationDetails {
+  /** Where the application is actually submitted — not the admissions information page. */
+  portal_url: string | null
+  portal_status: 'verified' | 'unverified'
+  checked_on: string
+  items: ApplicationFact[]
 }
 
 export type VerdictType =

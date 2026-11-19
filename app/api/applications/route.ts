@@ -64,16 +64,23 @@ export async function POST(req: Request) {
     .single()
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
+  // The audit write used to be fire-and-forget, so a failure here was
+  // invisible. It is still non-fatal (the status change itself is saved),
+  // but the caller is now told when the log write did not land.
+  let logged: boolean | null = null
   if (statusChanged || !existing) {
     const { data: opp } = await supabaseAdmin.from('opportunities').select('title').eq('id', opportunity_id).maybeSingle()
-    await supabaseAdmin.from('command_log').insert({
+    const from = existing?.status ?? null
+    const { error: logError } = await supabaseAdmin.from('command_log').insert({
       user_id: userId,
-      prompt: `Applications: ${opp?.title ?? opportunity_id} → ${status}`,
-      actions: [{ tool: 'update_application_status', input: { opportunity_id, status }, output: { application_id: application.id } }],
+      prompt: `Applications: ${opp?.title ?? opportunity_id} — ${from ?? 'untracked'} → ${status}`,
+      actions: [{ tool: 'update_application_status', input: { opportunity_id, from, to: status, at: now }, output: { application_id: application.id } }],
       status: 'confirmed',
       confirmed_at: now,
     })
+    logged = !logError
+    if (logError) console.error('[applications] command_log insert failed:', logError.message)
   }
 
-  return NextResponse.json({ application })
+  return NextResponse.json({ application, logged })
 }

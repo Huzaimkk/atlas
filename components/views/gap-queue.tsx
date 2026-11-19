@@ -7,6 +7,7 @@ import { EmptyState } from '@/components/atlas/empty-state'
 import { PageHeader } from '@/components/atlas/page-header'
 import { GAP_PRIORITY_LABELS } from '@/lib/atlas-format'
 import { cn } from '@/lib/utils'
+import { UnlockCount } from '@/components/atlas/unlock-count'
 
 const PRIORITY_STYLE: Record<AggregatedGap['priority'], string> = {
   start_now: 'text-verdict-ready',
@@ -16,8 +17,7 @@ const PRIORITY_STYLE: Record<AggregatedGap['priority'], string> = {
 
 export function GapQueueView({ gaps }: { gaps: AggregatedGap[] }) {
   const sorted = [...gaps].sort((a, b) => b.unblock_count - a.unblock_count)
-  const max = sorted[0]?.unblock_count ?? 1
-
+  
   return (
     <div className="space-y-6">
       <PageHeader title="Gaps to close" description="Every missing item across all your opportunities, ranked by how many each one unlocks." />
@@ -29,9 +29,9 @@ export function GapQueueView({ gaps }: { gaps: AggregatedGap[] }) {
           description="When an opportunity you are eligible for is missing something, it is listed here, ranked by how many opportunities it unlocks. The top row is the single most useful thing to do next."
         />
       ) : (
-        // Bar chart as the centrepiece — one axis (unblock_count), one hue
-        // (this is a single series, not categories needing distinct colors),
-        // shared scale across every bar so lengths are directly comparable.
+        // One mark per opportunity a gap would unlock — a count, not a
+        // progress bar. (The old bar was scaled to the largest gap, so a
+        // gap with nothing done on it looked ~90% complete.)
         <div className="space-y-1 rounded-lg border border-border bg-surface p-5">
           <AnimatePresence initial={false}>
             {sorted.map((gap) => (
@@ -56,17 +56,7 @@ export function GapQueueView({ gaps }: { gaps: AggregatedGap[] }) {
                   </span>
                 </div>
 
-                <div className="flex items-center gap-2">
-                  <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-surface-2">
-                    <motion.div
-                      className="h-full rounded-full bg-foreground/70"
-                      initial={{ width: 0 }}
-                      animate={{ width: `${Math.max(3, (gap.unblock_count / max) * 100)}%` }}
-                      transition={{ duration: 0.35, ease: 'easeOut' }}
-                    />
-                  </div>
-                  <span className="w-6 shrink-0 text-right font-mono text-xs text-foreground">{gap.unblock_count}</span>
-                </div>
+                <UnlockCount count={gap.unblock_count} />
 
                 <div className="flex items-center gap-4 font-mono text-2xs text-muted-foreground">
                   <span>{gap.time_estimate}</span>
