@@ -2,6 +2,7 @@ import 'server-only'
 import { supabaseAdmin } from '@/lib/supabase'
 import { extractFingerprintKeywords, overlapScore, type FingerprintKeywords } from '@/lib/fingerprint'
 import { INVENTORY_KEY } from '@/lib/application-documents'
+import { computeStatus, todayISO } from '@/lib/opportunity-status'
 import type { EligibilityRule, GapClosureCause, GapType, Opportunity, ProfileSnapshot, RequirementType, VerdictType } from '@/types/atlas'
 
 // Same engine Phase 4's one-off script used, promoted to a reusable module
@@ -22,6 +23,10 @@ export type EligibilityCheck =
   | { kind: 'current_phd_student_required'; value: true }
   | { kind: 'work_auth_countries'; value: string[] }
   | { kind: 'years_of_education_min'; value: number }
+  // Excludes holders of a degree in the listed fields (matched against the
+  // profile's degree names), e.g. Mundus MAPP: "candidates with a Bachelors
+  // degree in Natural Sciences or Engineering are not eligible to apply."
+  | { kind: 'degree_field_excluded'; value: string[] }
 
 const GAP_TYPE_DEFAULTS: Record<GapType, { time_estimate: string; cost_estimate: string }> = {
   credential: { time_estimate: 'weeks to months', cost_estimate: 'costs money' },
@@ -132,6 +137,8 @@ export interface ProfileFacts {
   documentInventory: ProfileSnapshot['document_inventory'] | null
   /** ISO date, computed once per diagnosis run — what Requirement.valid_until is checked against, same "compute against today" pattern as postDegreeHours. */
   today: string
+  /** Names of completed or in-progress degrees, lower-cased — what degree_field_excluded is checked against. */
+  degreeNames: string[]
 }
 
 export async function loadProfileFacts(snapshot: ProfileSnapshot & { id: string }, userId: string): Promise<ProfileFacts> {
@@ -145,7 +152,8 @@ export async function loadProfileFacts(snapshot: ProfileSnapshot & { id: string 
     yearsOfEducation: snapshot.identity.years_of_education,
     fingerprintKeywords: extractFingerprintKeywords(snapshot.research_fingerprint),
     documentInventory: snapshot.document_inventory ?? null,
-    today: new Date().toISOString().slice(0, 10),
+    today: todayISO(),
+    degreeNames: (snapshot.credentials?.degrees ?? []).map((d) => d.name.toLowerCase()),
   }
 }
 
@@ -170,6 +178,10 @@ function evalMechanicalCheck(check: EligibilityCheck | undefined, facts: Profile
       return facts.yearsOfEducation >= check.value
         ? { pass: true }
         : { pass: false, detail: `has ${facts.yearsOfEducation} years of education, needs ${check.value}` }
+    case 'degree_field_excluded': {
+      const hit = facts.degreeNames.find((name) => check.value.some((field) => name.includes(field.toLowerCase())))
+      return hit ? { pass: false, detail: `holds "${hit}", a field this programme excludes` } : { pass: true }
+    }
   }
 }
 
@@ -225,16 +237,21 @@ export function diagnoseOne(opp: Opportunity, facts: ProfileFacts): DiagnosisRes
     }
   }
 
-  if (opp.status === 'expired' || opp.status === 'paused') {
+  // Status is computed from the row's dates against today, never read
+  // from the stored column (lib/opportunity-status.ts).
+  const status = computeStatus(opp, facts.today)
+
+  if (status === 'expired' || status === 'paused') {
     if (LATE_WINDOW_TITLES.has(opp.title)) {
       return { type: 'LATE_WINDOW', reason: 'Late applications accepted — see the programme\'s own late-application route.', fit_score: null, gaps: [], verification_required: false }
     }
     return { type: 'EXPIRED', fit_score: null, gaps: [], verification_required: false }
   }
 
-  if (opp.status === 'not_yet_open') {
+  if (status === 'not_yet_open') {
     return { type: 'NOT_YET_OPEN', fit_score: fitScore(opp.field_tags, facts.fingerprintKeywords), gaps: [], verification_required: false }
   }
+
 
   const gaps: { type: GapType; label: string; action_label: string }[] = []
   let verification_required = false
@@ -265,11 +282,21 @@ export function diagnoseOne(opp: Opportunity, facts: ProfileFacts): DiagnosisRes
     gaps.push({ type: 'record', label, action_label: label })
     verification_required = true
   }
+  // Zero requirements, zero rules and no degree-level question: nothing
+  // was recorded, so nothing was checked. That is not READY — READY
+  // claims every rule passes. (A row whose only recorded fact is its
+  // degree level stays GAP with verification_required, above.)
+  if ((opp.requirements ?? []).length === 0 && (opp.eligibility_rules ?? []).length === 0 && acceptsBachelor) {
+    return { type: 'UNEXAMINED', reason: 'No eligibility rules or requirements are recorded for this row, so nothing has been checked. Not the same as ready.', fit_score: fitScore(opp.field_tags, facts.fingerprintKeywords), gaps: [], verification_required: false }
+  }
   for (const rule of opp.eligibility_rules ?? []) {
     // rule_text is already written as a plain-English condition (e.g.
     // "Typically requires a 2:1 undergraduate degree; IELTS typically
     // 6.0.") — it IS the action item, no internal framing needed on top.
     if (rule.rule_type !== 'discretionary') continue
+    // A statement of fact ("GRE is not required", "Funding is guaranteed")
+    // is shown on the row but is not something to close.
+    if (rule.informational) continue
     gaps.push({ type: 'record', label: rule.rule_text, action_label: rule.satisfying_action ?? rule.rule_text })
     // Only a rule explicitly curated as page-silence (see
     // EligibilityRule.verification_only) sets the flag — a rule that

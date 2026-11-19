@@ -95,6 +95,12 @@ export interface EligibilityRule {
    * to rule_text when uncurated.
    */
   satisfying_action?: string
+  /**
+   * A statement of fact rather than a condition — "GRE is not required",
+   * "There is no application fee". Shown with its quote on the row, never
+   * turned into a gap. Curated by scripts/backfill-informational-rules.mjs.
+   */
+  informational?: boolean
 }
 
 export type RequirementType =
@@ -217,6 +223,8 @@ export type VerdictType =
   | 'LATE_WINDOW'
   | 'EXPIRED'
   | 'NOT_YET_OPEN'
+  // Zero requirements and zero rules recorded: nothing has been checked.
+  | 'UNEXAMINED'
 
 export type GapType = 'credential' | 'document' | 'endorsement' | 'record' | 'experience' | 'contact'
 

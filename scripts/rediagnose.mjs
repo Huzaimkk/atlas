@@ -6,6 +6,7 @@
 // for calling the real app route (app/api/diagnose/route.ts), not a
 // permanent second implementation.
 import { createClient } from '@supabase/supabase-js'
+import { computeStatus, todayISO } from './lib/opportunity-status.mjs'
 
 const admin = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY)
 const USER_ID = 'de2223b9-b014-488b-b7d0-5e04455342b9'
@@ -71,6 +72,7 @@ function evalMechanicalCheck(check, facts) {
     case 'current_phd_student_required': return facts.isCurrentPhdStudent ? { pass: true } : { pass: false, detail: 'not currently enrolled in a PhD program' }
     case 'work_auth_countries': return check.value.includes(facts.citizenship) ? { pass: true } : { pass: false, detail: `citizenship is ${facts.citizenship}, not in [${check.value.join(', ')}], and no work authorization recorded` }
     case 'years_of_education_min': return facts.yearsOfEducation >= check.value ? { pass: true } : { pass: false, detail: `has ${facts.yearsOfEducation} years of education, needs ${check.value}` }
+    case 'degree_field_excluded': { const hit = facts.degreeNames.find((n) => check.value.some((f) => n.includes(f.toLowerCase()))); return hit ? { pass: false, detail: `holds "${hit}", a field this programme excludes` } : { pass: true } }
   }
   return null
 }
@@ -83,11 +85,12 @@ function diagnoseOne(opp, facts) {
       return { type: 'BLOCKED', rule_type: 'mechanical', reason: `${rule.rule_text} (${result.detail})`, blocking_rule_quote: rule.source_quote, blocking_rule_source_url: rule.source_url, fit_score: null, gaps: [], verification_required: false }
     }
   }
-  if (opp.status === 'expired' || opp.status === 'paused') {
+  const status = computeStatus(opp, facts.today)
+  if (status === 'expired' || status === 'paused') {
     if (LATE_WINDOW_TITLES.has(opp.title)) return { type: 'LATE_WINDOW', reason: "Late applications accepted — see the programme's own late-application route.", fit_score: null, gaps: [], verification_required: false }
     return { type: 'EXPIRED', fit_score: null, gaps: [], verification_required: false }
   }
-  if (opp.status === 'not_yet_open') return { type: 'NOT_YET_OPEN', fit_score: fitScore(opp.field_tags, facts.fingerprintKeywords), gaps: [], verification_required: false }
+  if (status === 'not_yet_open') return { type: 'NOT_YET_OPEN', fit_score: fitScore(opp.field_tags, facts.fingerprintKeywords), gaps: [], verification_required: false }
 
   const gaps = []
   let verification_required = false
@@ -103,8 +106,12 @@ function diagnoseOne(opp, facts) {
     gaps.push({ type: 'record', label, action_label: label })
     verification_required = true
   }
+  if ((opp.requirements ?? []).length === 0 && (opp.eligibility_rules ?? []).length === 0 && acceptsBachelor) {
+    return { type: 'UNEXAMINED', reason: 'No eligibility rules or requirements are recorded for this row, so nothing has been checked. Not the same as ready.', fit_score: fitScore(opp.field_tags, facts.fingerprintKeywords), gaps: [], verification_required: false }
+  }
   for (const rule of opp.eligibility_rules ?? []) {
     if (rule.rule_type !== 'discretionary') continue
+    if (rule.informational) continue
     gaps.push({ type: 'record', label: rule.rule_text, action_label: rule.satisfying_action ?? rule.rule_text })
     if (rule.verification_only) verification_required = true
   }
@@ -130,11 +137,24 @@ async function main() {
     yearsOfEducation: snapshot.identity.years_of_education,
     fingerprintKeywords: extractFingerprintKeywords(snapshot.research_fingerprint),
     documentInventory: snapshot.document_inventory ?? null,
-    today: new Date().toISOString().slice(0, 10),
+    today: todayISO(),
+    degreeNames: (snapshot.credentials?.degrees ?? []).map((d) => d.name.toLowerCase()),
   }
 
   const { data: opportunities, error: oppErr } = await admin.from('opportunities').select('*')
   if (oppErr) throw new Error(`Could not load opportunities: ${oppErr.message}`)
+  // Write the date-computed status back so the stored column stops lying.
+  const moves = {}
+  for (const opp of opportunities) {
+    const computed = computeStatus(opp, facts.today)
+    if (computed === opp.status) continue
+    const key = `${opp.status} → ${computed}`
+    moves[key] = (moves[key] ?? 0) + 1
+    const { error } = await admin.from('opportunities').update({ status: computed }).eq('id', opp.id)
+    if (error) console.error(`status update failed for ${opp.title}:`, error.message)
+    opp.status = computed
+  }
+  console.log(`Statuses recomputed against ${facts.today}:`, Object.keys(moves).length ? moves : 'no changes')
   console.log(`Re-diagnosing ${opportunities.length} rows against snapshot v${snapshot.version}...`)
 
   const diagnoses = opportunities.map((opp) => ({ opp, result: diagnoseOne(opp, facts) }))

@@ -1,7 +1,8 @@
 import 'server-only'
 import { supabaseAdmin } from '@/lib/supabase'
 import { computeGapPriority, daysBetween, daysUntil } from '@/lib/atlas-format'
-import { diagnoseOne, loadProfileFacts } from '@/lib/diagnostic-engine'
+import { diagnoseOne, loadProfileFacts, type ProfileFacts } from '@/lib/diagnostic-engine'
+import { computeStatus, todayISO } from '@/lib/opportunity-status'
 import type {
   AggregatedAction,
   AggregatedGap,
@@ -32,6 +33,8 @@ export interface AtlasData {
   gapClosures: GapClosure[]
   referees: Referee[]
   missedDeadlines: MissedDeadline[]
+  /** Tables whose read failed. Shown to the user — an empty list from a failed read must never look like an empty list from real data. */
+  loadErrors?: string[]
 }
 
 /**
@@ -43,14 +46,8 @@ export interface AtlasData {
  * than a fabricated guess — only rows with a real ready_since on the
  * current verdict get a real day-count.
  */
-async function computeMissedDeadlines(
-  opportunities: Opportunity[],
-  verdicts: Verdict[],
-  profile: (ProfileSnapshot & { id: string }) | null,
-  userId: string
-): Promise<MissedDeadline[]> {
-  if (!profile) return []
-  const facts = await loadProfileFacts(profile, userId)
+function computeMissedDeadlines(opportunities: Opportunity[], verdicts: Verdict[], facts: ProfileFacts | null): MissedDeadline[] {
+  if (!facts) return []
   const verdictByOpp = new Map(verdicts.map((v) => [v.opportunity_id, v]))
 
   const missed: MissedDeadline[] = []
@@ -59,7 +56,10 @@ async function computeMissedDeadlines(
     const days = daysUntil(opp.deadline)
     if (days === null || days >= 0) continue // not actually past yet
 
-    const counterfactual = diagnoseOne({ ...opp, status: 'open' }, facts)
+    // As of its own deadline day: would every rule have passed then?
+    // (Status is computed from dates inside diagnoseOne, so moving "today"
+    // to the deadline is what reopens it — overriding status no longer does.)
+    const counterfactual = diagnoseOne(opp, { ...facts, today: opp.deadline })
     if (counterfactual.type !== 'READY') continue
 
     const readySince = verdictByOpp.get(opp.id)?.ready_since ?? null
@@ -89,15 +89,15 @@ export async function fetchAtlasData(userId: string): Promise<AtlasData> {
   monthStart.setHours(0, 0, 0, 0)
 
   const [
-    { data: opportunities },
-    { data: verdicts },
-    { data: gapQueue },
-    { data: actionQueue },
-    { data: profile },
-    { data: inboxRows },
-    { data: applications },
-    { data: gapClosureRows },
-    { data: refereeRows },
+    { data: opportunities, error: opportunitiesError },
+    { data: verdicts, error: verdictsError },
+    { data: gapQueue, error: gapQueueError },
+    { data: actionQueue, error: actionQueueError },
+    { data: profile, error: profileError },
+    { data: inboxRows, error: inboxRowsError },
+    { data: applications, error: applicationsError },
+    { data: gapClosureRows, error: gapClosureRowsError },
+    { data: refereeRows, error: refereeRowsError },
   ] = await Promise.all([
     supabaseAdmin.from('opportunities').select('*'),
     supabaseAdmin.from('verdicts').select('*').eq('user_id', userId),
@@ -110,35 +110,93 @@ export async function fetchAtlasData(userId: string): Promise<AtlasData> {
     supabaseAdmin.from('referees').select('*').eq('user_id', userId).order('created_at', { ascending: true }),
   ])
 
+  const loadErrors = (
+    [
+      ['opportunities', opportunitiesError],
+      ['verdicts', verdictsError],
+      ['gaps', gapQueueError],
+      ['actions', actionQueueError],
+      ['profile', profileError],
+      ['inbox', inboxRowsError],
+      ['applications', applicationsError],
+      ['gap closures', gapClosureRowsError],
+      ['referees', refereeRowsError],
+    ] as const
+  )
+    .filter(([, e]) => !!e)
+    .map(([name, e]) => {
+      console.error(`[fetchAtlasData] ${name} read failed:`, e?.message)
+      return name
+    })
+
+  // ---- Computed against today, not against the last stored run ----------
+  // Statuses come from dates (lib/opportunity-status.ts). Verdicts are
+  // re-diagnosed live and overlaid on the stored ones, so a row whose
+  // deadline passed overnight reads EXPIRED now rather than after the next
+  // scripted re-diagnosis. Stored rows still supply history (ready_since).
+  const facts = profile ? await loadProfileFacts(profile, userId) : null
+  const today = facts?.today ?? todayISO()
+  const liveOpportunities: Opportunity[] = (opportunities ?? []).map((o) => ({ ...o, status: computeStatus(o, today) }))
+  const storedVerdictByOpp = new Map((verdicts ?? []).map((v) => [v.opportunity_id, v as Verdict]))
+  let liveVerdicts: Verdict[] = (verdicts ?? []) as Verdict[]
+  let liveGapIds: Set<string> | null = null
+  if (facts && profile) {
+    const nowIso = new Date().toISOString()
+    liveVerdicts = liveOpportunities.map((opp) => {
+      const live = diagnoseOne(opp, facts)
+      const stored = storedVerdictByOpp.get(opp.id)
+      if (stored && stored.type === live.type && stored.verification_required === live.verification_required) return stored
+      return {
+        ...(stored ?? {}),
+        opportunity_id: opp.id,
+        snapshot_version: stored?.snapshot_version ?? profile.version,
+        type: live.type,
+        rule_type: live.rule_type,
+        reason: live.reason,
+        blocking_rule_quote: live.blocking_rule_quote,
+        blocking_rule_source_url: live.blocking_rule_source_url,
+        fit_score: live.fit_score ?? undefined,
+        verification_required: live.verification_required,
+        ready_since: stored?.ready_since ?? null,
+        computed_at: nowIso,
+      } as Verdict
+    })
+    liveGapIds = new Set(liveVerdicts.filter((v) => v.type === 'GAP').map((v) => v.opportunity_id))
+  }
+  // A gap only counts toward "unlocks N" while the row it belongs to is still a live GAP.
+  const stillOpen = (ids: string[]) => (liveGapIds ? ids.filter((id) => liveGapIds!.has(id)) : ids)
+
   const gaps: AggregatedGap[] = (gapQueue ?? []).map((g) => ({
     id: `${g.type}:${g.label}`,
     type: g.type,
     label: g.label,
-    unblock_count: g.unblock_count,
-    opportunity_ids: g.opportunity_ids,
+    unblock_count: stillOpen(g.opportunity_ids).length,
+    opportunity_ids: stillOpen(g.opportunity_ids),
     time_estimate: g.time_estimate ?? '',
     cost_estimate: g.cost_estimate ?? '',
-    priority: computeGapPriority(g.type, g.unblock_count),
+    priority: computeGapPriority(g.type, stillOpen(g.opportunity_ids).length),
   }))
+  .filter((g) => g.unblock_count > 0)
 
   const actions: AggregatedAction[] = (actionQueue ?? []).map((a) => ({
     id: `${a.type}:${a.action_label}`,
     type: a.type,
     action_label: a.action_label,
-    unblock_count: a.unblock_count,
-    opportunity_ids: a.opportunity_ids,
+    unblock_count: stillOpen(a.opportunity_ids).length,
+    opportunity_ids: stillOpen(a.opportunity_ids),
     time_estimate: a.time_estimate ?? '',
     cost_estimate: a.cost_estimate ?? '',
-    priority: computeGapPriority(a.type, a.unblock_count),
+    priority: computeGapPriority(a.type, stillOpen(a.opportunity_ids).length),
   }))
+  .filter((a) => a.unblock_count > 0)
 
-  const verdictByOpportunityId = new Map((verdicts ?? []).map((v) => [v.opportunity_id, v]))
+  const verdictByOpportunityId = new Map(liveVerdicts.map((v) => [v.opportunity_id, v]))
   // Withdrawn (item 4 — decline) takes priority over an EXPIRED verdict:
   // an opportunity someone explicitly declined belongs in Archive for that
   // reason even if it also happens to have since expired.
   const withdrawnOppIds = new Set((applications ?? []).filter((a) => a.status === 'withdrawn').map((a) => a.opportunity_id))
   const applicationByOpportunityId = new Map((applications ?? []).map((a) => [a.opportunity_id, a]))
-  const archive: ArchiveEntry[] = (opportunities ?? [])
+  const archive: ArchiveEntry[] = liveOpportunities
     .filter((o) => withdrawnOppIds.has(o.id) || verdictByOpportunityId.get(o.id)?.type === 'EXPIRED')
     .map((o): ArchiveEntry | null => {
       const verdict = verdictByOpportunityId.get(o.id)
@@ -155,8 +213,8 @@ export async function fetchAtlasData(userId: string): Promise<AtlasData> {
     .filter((e): e is ArchiveEntry => e !== null)
 
   return {
-    opportunities: opportunities ?? [],
-    verdicts: verdicts ?? [],
+    opportunities: liveOpportunities,
+    verdicts: liveVerdicts,
     gaps,
     actions,
     watchlist: [], // Channel C (Phase 6) not built yet
@@ -177,6 +235,7 @@ export async function fetchAtlasData(userId: string): Promise<AtlasData> {
     applications: applications ?? [],
     gapClosures: gapClosureRows ?? [],
     referees: refereeRows ?? [],
-    missedDeadlines: await computeMissedDeadlines(opportunities ?? [], verdicts ?? [], profile ?? null, userId),
+    missedDeadlines: computeMissedDeadlines(liveOpportunities, liveVerdicts, facts),
+    loadErrors,
   }
 }
