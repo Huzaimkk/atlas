@@ -1,4 +1,4 @@
--- Atlas — multi-tenant P1, part 2 (NOT YET RUN)
+-- Atlas — multi-tenant P1, part 2 (applied)
 -- Run ONLY after scripts/seed-multi-tenant-user.mjs has backfilled user_id
 -- on every existing row in all nine tables — these ALTER COLUMN ... SET
 -- NOT NULL statements fail loudly (not silently) if any row still has a

@@ -9,7 +9,9 @@ import { createClient } from '@supabase/supabase-js'
 import { computeStatus, todayISO } from './lib/opportunity-status.mjs'
 
 const admin = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY)
-const USER_ID = 'de2223b9-b014-488b-b7d0-5e04455342b9'
+// Re-pointed 19 Nov 2026 from the seeded user (de2223b9-…) to the real
+// sign-in account by scripts/repoint-user.mjs. Override with ATLAS_USER_ID.
+const USER_ID = process.env.ATLAS_USER_ID ?? 'f61c02d7-2bb3-4180-a7b6-dc62a1503a9e'
 
 const INVENTORY_KEY = {
   sop: 'sop', research_proposal: 'research_statement', cv: 'cv', transcript: 'transcripts',

@@ -1,4 +1,4 @@
--- Atlas — multi-tenant P1, part 1 (NOT YET RUN — pending review)
+-- Atlas — multi-tenant P1, part 1 (applied; two-user isolation verified 19 Nov 2026 — docs/verification-log.md)
 --
 -- Run order for the whole P1 migration:
 --   1. This file (0012_multi_tenant_part1.sql) — adds nullable user_id
