@@ -201,7 +201,12 @@ type DeadlineRow = { opp: Opportunity; verdict: Verdict | undefined; days: numbe
  * Deadlines grouped by day, soonest first. The nearest day is the headline
  * because that is the clock the whole week runs on.
  */
-function DeadlineCountdown({ rows }: { rows: DeadlineRow[] }) {
+function DeadlineCountdown({ rows: allRows }: { rows: DeadlineRow[] }) {
+  // The headline is your tracks — degrees, scholarships, fellowships, roles.
+  // Conferences and events close constantly and would otherwise lead every
+  // day; they get their own line underneath.
+  const rows = allRows.filter((r) => r.opp.track !== 'conference')
+  const events = allRows.filter((r) => r.opp.track === 'conference')
   const byDay = new Map<string, DeadlineRow[]>()
   for (const r of rows) {
     const key = r.opp.deadline as string
@@ -248,6 +253,12 @@ function DeadlineCountdown({ rows }: { rows: DeadlineRow[] }) {
           ))}
         </ul>
       </div>
+      {events.length > 0 && (
+        <div className="border-t border-border px-6 py-3 text-sm">
+          <span className="text-xs text-muted-foreground">Conferences and events inside {DEADLINE_WINDOW_DAYS} days: </span>
+          <span className="text-foreground">{events.map((e) => `${e.opp.title} (${e.days === 0 ? 'today' : `${e.days}d`})`).join(', ')}</span>
+        </div>
+      )}
       {rest.length > 0 && (
         <div className="border-t border-border px-6 py-4">
           <p className="mb-2 text-xs text-muted-foreground">After that, inside {DEADLINE_WINDOW_DAYS} days</p>
@@ -307,7 +318,7 @@ export function TodayView({
   const deadlinesSoon = opportunities
     .map((opp) => ({ opp, verdict: verdictByOpp.get(opp.id), days: daysUntil(opp.deadline) }))
     .filter(({ verdict, days }) => {
-      if (!verdict || !['READY', 'GAP', 'LATE_WINDOW'].includes(verdict.type)) return false
+      if (!verdict || !['READY', 'GAP', 'LATE_WINDOW', 'UNEXAMINED'].includes(verdict.type)) return false
       return days !== null && days >= 0 && days <= DEADLINE_WINDOW_DAYS
     })
     .sort((a, b) => (a.days ?? 0) - (b.days ?? 0))

@@ -38,6 +38,7 @@ function Position({ verdicts }: { verdicts: Verdict[] }) {
         value: count((v) => v.type === 'GAP' && v.verification_required),
       },
       { key: 'gap', label: 'Gap', hint: 'eligible, with named things missing', color: 'var(--verdict-gap)', value: count((v) => v.type === 'GAP' && !v.verification_required) },
+      { key: 'unexamined', label: 'Unexamined', hint: 'nothing recorded, so nothing checked — not ready', color: 'var(--verdict-unexamined)', value: count((v) => v.type === 'UNEXAMINED') },
       { key: 'upcoming', label: 'Not yet open', hint: 'opens later', color: 'var(--verdict-watch)', value: count((v) => v.type === 'NOT_YET_OPEN') },
       { key: 'blocked', label: 'Blocked', hint: 'a quoted rule you cannot meet', color: 'var(--verdict-blocked)', value: count((v) => v.type === 'BLOCKED' || v.type === 'IRRELEVANT') },
       { key: 'expired', label: 'Expired', hint: 'kept for the next cycle', color: 'var(--verdict-expired)', value: count((v) => v.type === 'EXPIRED') },

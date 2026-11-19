@@ -13,6 +13,7 @@ const VERDICTS: { type: VerdictType; meaning: string }[] = [
   { type: 'LATE_WINDOW', meaning: 'The deadline has passed, but the organiser still takes applications. Flagged as urgent instead of written off.' },
   { type: 'NOT_YET_OPEN', meaning: 'Applications open later. Atlas holds the opportunity and surfaces it when they do.' },
   { type: 'BLOCKED', meaning: 'A rule you cannot change excludes you: citizenship, degree level, age. The rule is quoted with its source, so you can check it yourself.' },
+  { type: 'UNEXAMINED', meaning: 'Nothing about this programme has been recorded yet, so nothing has been checked. Shown as its own state, never counted as ready.' },
   { type: 'EXPIRED', meaning: 'Closed, with no late route. Kept rather than deleted, because most programmes come back next year.' },
 ]
 
@@ -122,9 +123,9 @@ export default async function LandingPage() {
         <section className="border-t border-border">
           <div className="mx-auto grid max-w-6xl gap-x-16 gap-y-10 px-5 py-20 sm:px-8 lg:grid-cols-[minmax(0,20rem)_minmax(0,1fr)] lg:py-28">
             <div>
-              <h2 className="display text-4xl leading-tight text-foreground">Six verdicts. Each one means exactly one thing.</h2>
+              <h2 className="display text-4xl leading-tight text-foreground">Seven verdicts. Each one means exactly one thing.</h2>
               <p className="mt-4 text-base text-muted-foreground">
-                These six colours are the only colour in the product. If something on screen is tinted, it is telling you where you
+                These seven colours are the only colour in the product. If something on screen is tinted, it is telling you where you
                 stand.
               </p>
             </div>

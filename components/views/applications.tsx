@@ -56,7 +56,9 @@ export function ApplicationsView({
   const router = useRouter()
   const readOnly = useReadOnly()
   const [, startTransition] = useTransition()
-  const [statusFilter, setStatusFilter] = useState<ApplicationStatus | 'all'>('all')
+  // 'tracked' (default) = rows with an applications record, i.e. ones you have
+  // set a status on. 'all' is every opportunity in the pool.
+  const [statusFilter, setStatusFilter] = useState<ApplicationStatus | 'all' | 'tracked'>('tracked')
   const [expanded, setExpanded] = useState<Set<string>>(new Set())
   const [pending, setPending] = useState<Set<string>>(new Set())
 
@@ -72,7 +74,12 @@ export function ApplicationsView({
   )
 
   const filtered = useMemo(() => {
-    const r = statusFilter === 'all' ? rows : rows.filter((row) => row.status === statusFilter)
+    const r =
+      statusFilter === 'all'
+        ? rows
+        : statusFilter === 'tracked'
+          ? rows.filter((row) => row.application !== null)
+          : rows.filter((row) => row.status === statusFilter)
     return [...r].sort((a, b) => {
       if (!a.opp.deadline) return 1
       if (!b.opp.deadline) return -1
@@ -123,12 +130,13 @@ export function ApplicationsView({
       <PageHeader title="Applications" description="Track each application from first look to decision. Every status change is dated." />
 
       <div className="flex items-center gap-2">
-        <Select value={statusFilter} onValueChange={(v) => setStatusFilter(v as ApplicationStatus | 'all')}>
+        <Select value={statusFilter} onValueChange={(v) => setStatusFilter(v as ApplicationStatus | 'all' | 'tracked')}>
           <SelectTrigger size="sm" className="h-8 w-44 text-xs">
             <SelectValue placeholder="Status" />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="all">All statuses</SelectItem>
+            <SelectItem value="tracked">Tracked by you</SelectItem>
+            <SelectItem value="all">Every opportunity</SelectItem>
             {APPLICATION_STATUS_ORDER.map((s) => (
               <SelectItem key={s} value={s}>
                 {APPLICATION_STATUS_LABELS[s]}
@@ -140,7 +148,16 @@ export function ApplicationsView({
       </div>
 
       {filtered.length === 0 ? (
-        <EmptyState icon={ClipboardList} title="Nothing at this stage" description="No application is at this status. Clear the filter to see all of them." />
+        <EmptyState
+          icon={ClipboardList}
+          title={statusFilter === 'tracked' ? 'You are not tracking any applications yet' : 'Nothing at this stage'}
+          description={
+            statusFilter === 'tracked'
+              ? 'Open any opportunity and set its status to start tracking it here. Choose "Every opportunity" to see the whole pool.'
+              : 'No application is at this status. Choose another filter to see more.'
+          }
+          action={statusFilter === 'tracked' ? { label: 'Show every opportunity', onClick: () => setStatusFilter('all') } : undefined}
+        />
       ) : (
         <div className="overflow-hidden rounded-lg border border-border bg-surface">
           <Table>

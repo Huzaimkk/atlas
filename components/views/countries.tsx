@@ -75,6 +75,7 @@ const VERDICT_RANK: Record<VerdictType, number> = {
   LATE_WINDOW: 0,
   READY: 1,
   GAP: 2,
+  UNEXAMINED: 3,
   NOT_YET_OPEN: 3,
   BLOCKED: 4,
   IRRELEVANT: 5,
@@ -216,12 +217,13 @@ export function CountriesView({ opportunities, verdicts, applications = [] }: { 
       { label: 'Ready', color: 'var(--verdict-ready)', value: count((r) => r.verdict?.type === 'READY' || r.verdict?.type === 'LATE_WINDOW') },
       { label: 'Gap', color: 'var(--verdict-gap)', value: count((r) => r.verdict?.type === 'GAP' && !r.verdict.verification_required) },
       { label: 'Pending verification', color: 'var(--verdict-gap)', hollow: true, value: count((r) => r.verdict?.type === 'GAP' && !!r.verdict.verification_required) },
+      { label: 'Unexamined', color: 'var(--verdict-unexamined)', value: count((r) => r.verdict?.type === 'UNEXAMINED') },
       { label: 'Not yet open', color: 'var(--verdict-watch)', value: count((r) => r.verdict?.type === 'NOT_YET_OPEN') },
       { label: 'Blocked', color: 'var(--verdict-blocked)', value: count((r) => r.verdict?.type === 'BLOCKED' || r.verdict?.type === 'IRRELEVANT') },
       { label: 'Expired', color: 'var(--verdict-expired)', value: count((r) => r.verdict?.type === 'EXPIRED') },
     ]
   }, [countryRows])
-  const closingSoon = countryRows.filter((r) => r.days !== null && r.days >= 0 && r.days <= 30 && r.verdict && ['READY', 'GAP', 'LATE_WINDOW'].includes(r.verdict.type)).length
+  const closingSoon = countryRows.filter((r) => r.days !== null && r.days >= 0 && r.days <= 30 && r.verdict && ['READY', 'GAP', 'LATE_WINDOW', 'UNEXAMINED'].includes(r.verdict.type)).length
 
   const areaCounts = useMemo(() => new Map(AREAS.map((a) => [a.id, countryRows.filter((r) => a.tracks.includes(r.opp.track)).length])), [countryRows])
   const activeArea = AREAS.find((a) => a.id === area)!
@@ -231,7 +233,7 @@ export function CountriesView({ opportunities, verdicts, applications = [] }: { 
     return countryRows
       .filter((r) => activeArea.tracks.includes(r.opp.track))
       .filter((r) => !datedOnly || !!r.opp.deadline)
-      .filter((r) => !openOnly || (r.verdict ? ['READY', 'GAP', 'LATE_WINDOW', 'NOT_YET_OPEN'].includes(r.verdict.type) : true))
+      .filter((r) => !openOnly || (r.verdict ? ['READY', 'GAP', 'LATE_WINDOW', 'NOT_YET_OPEN', 'UNEXAMINED'].includes(r.verdict.type) : true))
       .filter((r) => !q || r.opp.title.toLowerCase().includes(q) || r.opp.institution.toLowerCase().includes(q) || r.opp.field_tags.some((t) => t.toLowerCase().includes(q)))
       .sort(byDeadline)
   }, [countryRows, activeArea, datedOnly, openOnly, query])

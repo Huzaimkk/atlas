@@ -8,6 +8,7 @@ export const VERDICT_META: Record<VerdictType, { label: string; colorVar: string
   IRRELEVANT: { label: 'Irrelevant', colorVar: 'var(--verdict-blocked)', bgVar: 'var(--verdict-blocked-bg)' },
   EXPIRED: { label: 'Expired', colorVar: 'var(--verdict-expired)', bgVar: 'var(--verdict-expired-bg)' },
   NOT_YET_OPEN: { label: 'Not yet open', colorVar: 'var(--verdict-watch)', bgVar: 'var(--verdict-watch-bg)' },
+  UNEXAMINED: { label: 'Unexamined', colorVar: 'var(--verdict-unexamined)', bgVar: 'var(--verdict-unexamined-bg)' },
 }
 
 export const TIER_META: Record<Tier, { label: string }> = {

@@ -307,7 +307,7 @@ export function AppShell({ data, email = null, demo = false }: { data?: AtlasDat
     mainRef.current?.scrollTo({ top: 0 })
   }
 
-  const { opportunities, verdicts, gaps, actions, watchlist, inbox, archive, profile, applications, gapClosures, referees, missedDeadlines } =
+  const { opportunities, verdicts, gaps, actions, watchlist, inbox, archive, profile, applications, gapClosures, referees, missedDeadlines, loadErrors = [] } =
     data ?? EMPTY
 
   // Deadline alerting: a row inside 14 days surfaces hard. LATE_WINDOW
@@ -320,7 +320,7 @@ export function AppShell({ data, email = null, demo = false }: { data?: AtlasDat
     return opportunities
       .map((o) => ({ opp: o, verdict: verdictById.get(o.id), days: daysUntil(o.deadline) }))
       .filter(({ verdict, days }) => {
-        if (!verdict || !['READY', 'GAP', 'LATE_WINDOW'].includes(verdict.type)) return false
+        if (!verdict || !['READY', 'GAP', 'LATE_WINDOW', 'UNEXAMINED'].includes(verdict.type)) return false
         if (verdict.type === 'LATE_WINDOW') return true
         return days !== null && days >= 0 && days <= URGENT_DAYS
       })
@@ -383,6 +383,17 @@ export function AppShell({ data, email = null, demo = false }: { data?: AtlasDat
           </Sheet>
 
           <main ref={mainRef} className="flex-1 overflow-y-auto">
+            {loadErrors.length > 0 && (
+              <div role="alert" className="flex flex-wrap items-center gap-x-3 gap-y-1 border-b border-destructive/30 bg-destructive/10 px-5 py-2 text-xs text-destructive sm:px-8">
+                <AlertTriangle className="size-3.5 shrink-0" strokeWidth={1.75} />
+                <span>
+                  Some of your data did not load ({loadErrors.join(', ')}). What you see may be incomplete — empty lists here are not real.
+                </span>
+                <button onClick={() => window.location.reload()} className="underline underline-offset-2 hover:opacity-80">
+                  Reload
+                </button>
+              </div>
+            )}
             {urgent.length > 0 && (
               <button
                 onClick={() => navigate('today')}

@@ -12,7 +12,7 @@
 
    THE THREE RULES THIS FILE ENCODES
    1. Colour means verdict. The interface itself is monochrome ink —
-      the only hues on screen are the six verdict states, so a glance at
+      the only hues on screen are the seven verdict states, so a glance at
       any page reads as a position, not as decoration.
    2. Three voices, three typefaces. Serif (Newsreader) is for page
       titles and for words quoted from a source page — the programme's
@@ -74,6 +74,10 @@
   --verdict-expired-bg: rgba(93, 104, 119, 0.1);
   --verdict-watch: #6aa7f0;
   --verdict-watch-bg: rgba(106, 167, 240, 0.12);
+  /* Unexamined: nothing was recorded, so nothing was checked. A cool
+     violet, deliberately unlike Ready's green, so it is never read as one. */
+  --verdict-unexamined: #a99cf0;
+  --verdict-unexamined-bg: rgba(169, 156, 240, 0.12);
 
   /* ---- Chart series — a single neutral series first; the rest reuse
      verdict hues only where the series IS a status. ---- */
@@ -139,6 +143,8 @@
   --color-verdict-expired-bg: var(--verdict-expired-bg);
   --color-verdict-watch: var(--verdict-watch);
   --color-verdict-watch-bg: var(--verdict-watch-bg);
+  --color-verdict-unexamined: var(--verdict-unexamined);
+  --color-verdict-unexamined-bg: var(--verdict-unexamined-bg);
 
   --color-chart-1: var(--chart-1);
   --color-chart-2: var(--chart-2);
