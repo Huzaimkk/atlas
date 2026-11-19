@@ -15,13 +15,12 @@ import {
 } from '@/data/mock/atlas-mock'
 
 /**
- * /demo is on in development and off in production unless
- * ATLAS_PUBLIC_DEMO=1 is set. It stays off by default because the fixture
- * in atlas-mock.ts names real academics (one with an email address) and a
- * real referee — fine on a developer's machine, not something to publish
- * without replacing those rows with invented ones first.
+ * /demo is public. Every person in atlas-mock.ts is invented (supervisors,
+ * referees, the applicant's venture), and lab links point at example.org —
+ * keep it that way: a real name added to the fixture is published to
+ * anyone who opens the demo. Set ATLAS_DISABLE_DEMO=1 to turn it off.
  */
-export const DEMO_ENABLED = process.env.NODE_ENV !== 'production' || process.env.ATLAS_PUBLIC_DEMO === '1'
+export const DEMO_ENABLED = process.env.ATLAS_DISABLE_DEMO !== '1'
 
 // The fixture was written as if "today" were this date. Shifting every
 // date by (real today − this) keeps its deadlines, ages and statuses

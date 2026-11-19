@@ -5,6 +5,10 @@
 // where corrected; everything else is illustrative. This fixture is NOT the
 // real profile — see profile_snapshots version 1, seeded from
 // data/inbox/cv/profile-snapshot-v5.md, for that.
+//
+// PUBLIC: this file is served at /demo. Every person named in it is invented
+// and every lab link points at example.org. Never add a real person's name,
+// email or page here — they did not agree to appear in a public showcase.
 
 import type {
   AggregatedAction,
@@ -136,14 +140,14 @@ export const mockOpportunities: Opportunity[] = [
     origin: 'search',
   },
   {
-    id: 'lab-fang-uf',
+    id: 'lab-uf-clinical-ai',
     title: 'Funded PhD — Multimodal Clinical AI Lab',
     track: 'phd_funded',
     category: 4,
     integrated_phd_fast_track: false,
     institution: 'University of Florida',
     country: 'United States',
-    supervisor: { name: 'Ruogu Fang', email: 'ruogu.fang@bme.ufl.edu', lab_url: 'https://healthinformaticslab.org' },
+    supervisor: { name: 'Dr. Leona Varga', email: 'l.varga@example.org', lab_url: 'https://example.org/varga-lab' },
     field_tags: ['multimodal clinical foundation models', 'uncertainty-aware inference'],
     funding: { stipend: { amount: 32000, currency: 'USD', period: 'year' }, tuition: 'covered', insurance: true },
     degree_levels_accepted: ['undergraduate', 'graduate'],
@@ -157,7 +161,7 @@ export const mockOpportunities: Opportunity[] = [
     status: 'rolling',
     rolling: true,
     tier: 'T2',
-    source_url: 'https://healthinformaticslab.org/join',
+    source_url: 'https://example.org/varga-lab/join',
     verified_on: '2026-09-08',
     source_type: 'official',
     verification_level: 'verified',
@@ -327,7 +331,7 @@ export const mockVerdicts: Verdict[] = [
     verification_required: false,
   },
   {
-    opportunity_id: 'lab-fang-uf',
+    opportunity_id: 'lab-uf-clinical-ai',
     type: 'GAP',
     snapshot_version: 3,
     computed_at: '2026-09-15',
@@ -378,7 +382,7 @@ export const mockAggregatedGaps: AggregatedGap[] = [
     type: 'endorsement',
     label: '2× letters of recommendation',
     unblock_count: 2,
-    opportunity_ids: ['gates-cambridge', 'lab-fang-uf'],
+    opportunity_ids: ['gates-cambridge', 'lab-uf-clinical-ai'],
     time_estimate: '~4 weeks',
     cost_estimate: 'free',
     priority: 'start_now',
@@ -388,7 +392,7 @@ export const mockAggregatedGaps: AggregatedGap[] = [
     type: 'document',
     label: 'Research proposal',
     unblock_count: 1,
-    opportunity_ids: ['lab-fang-uf'],
+    opportunity_ids: ['lab-uf-clinical-ai'],
     time_estimate: '~2 days',
     cost_estimate: 'free',
     priority: 'agent_assisted',
@@ -398,7 +402,7 @@ export const mockAggregatedGaps: AggregatedGap[] = [
     type: 'contact',
     label: 'No prior email exchange with the PI',
     unblock_count: 1,
-    opportunity_ids: ['lab-fang-uf'],
+    opportunity_ids: ['lab-uf-clinical-ai'],
     time_estimate: '~1 day',
     cost_estimate: 'free',
     priority: 'agent_assisted',
@@ -421,11 +425,11 @@ export const mockActions: AggregatedAction[] = mockAggregatedGaps.map((g) => ({
 
 export const mockWatchlist: WatchlistLab[] = [
   {
-    id: 'watch-fang',
-    supervisor: { name: 'Ruogu Fang', email: 'ruogu.fang@bme.ufl.edu', lab_url: 'https://healthinformaticslab.org' },
+    id: 'watch-uf-clinical-ai',
+    supervisor: { name: 'Dr. Leona Varga', email: 'l.varga@example.org', lab_url: 'https://example.org/varga-lab' },
     institution: 'University of Florida',
     field_tags: ['multimodal clinical foundation models'],
-    page_url: 'https://healthinformaticslab.org/join',
+    page_url: 'https://example.org/varga-lab/join',
     status: 'change_detected',
     last_fetched_at: '2026-09-14',
     last_change_detected_at: '2026-09-14',
@@ -433,19 +437,19 @@ export const mockWatchlist: WatchlistLab[] = [
   },
   {
     id: 'watch-lecun',
-    supervisor: { name: 'Kyunghyun Cho', lab_url: 'https://kyunghyuncho.me' },
+    supervisor: { name: 'Dr. Tomás Ferreira', lab_url: 'https://example.org/ferreira-group' },
     institution: 'New York University',
     field_tags: ['uncertainty-aware inference'],
-    page_url: 'https://kyunghyuncho.me/openings',
+    page_url: 'https://example.org/ferreira-group/openings',
     status: 'watching',
     last_fetched_at: '2026-09-13',
   },
   {
     id: 'watch-eth',
-    supervisor: { name: 'Ender Konukoglu', lab_url: 'https://vision.ee.ethz.ch/cvl' },
+    supervisor: { name: 'Dr. Ingrid Halvorsen', lab_url: 'https://example.org/halvorsen-lab' },
     institution: 'ETH Zurich',
     field_tags: ['multimodal clinical foundation models'],
-    page_url: 'https://vision.ee.ethz.ch/cvl/prospective-students',
+    page_url: 'https://example.org/halvorsen-lab/prospective-students',
     status: 'stale',
     last_fetched_at: '2026-08-20',
   },
@@ -521,8 +525,8 @@ export const mockProfile: ProfileSnapshot = {
     publications: [],
     preprints: [],
     patents: [],
-    open_source: [{ name: 'clincell-core', stars: 42, usage: 'internal clinical inference pipeline' }],
-    venture_work: [{ name: 'ClinCell', role: 'CTO', metrics: 'Founding engineer, clinical AI diagnostics platform' }],
+    open_source: [{ name: 'triage-kit', stars: 42, usage: 'internal clinical inference pipeline' }],
+    venture_work: [{ name: 'Northwind Health', role: 'CTO', metrics: 'Founding engineer, clinical AI diagnostics platform' }],
   },
   teaching_service: { ta_history: [], mentoring: [], review_work: [] },
   document_inventory: {
@@ -534,7 +538,7 @@ export const mockProfile: ProfileSnapshot = {
     writing_sample: 'missing',
     portfolio: 'ready',
   },
-  network: [{ professor: 'Ruogu Fang', institution: 'University of Florida', date: '2026-09-01', outcome: 'No reply yet' }],
+  network: [{ professor: 'Dr. Leona Varga', institution: 'University of Florida', date: '2026-09-01', outcome: 'No reply yet' }],
   pending_items: [
     { item: 'IELTS', type: 'credential', status: 'in_progress', expected_completion: '2026-10-15' },
     { item: 'GRE', type: 'credential', status: 'not_started', expected_completion: null },
@@ -601,11 +605,11 @@ export const mockGapClosures: GapClosure[] = [
 ]
 
 export const mockReferees: Referee[] = [
-  { id: 'ref-1', name: 'Mirza Shahid', affiliation: 'Senior Member IEEE', relationship: 'Co-author (AI-DTC paper)', status: 'contacted', status_changed_at: '2026-10-05', status_history: [{ status: 'not_contacted', at: '2026-09-01' }, { status: 'contacted', at: '2026-10-05' }], created_at: '2026-09-01', updated_at: '2026-10-05' },
-  { id: 'ref-2', name: 'DOW Medical University contact', status: 'not_contacted', status_changed_at: '2026-09-01', status_history: [], created_at: '2026-09-01', updated_at: '2026-09-01' },
-  { id: 'ref-3', name: 'A DUET professor', status: 'not_contacted', status_changed_at: '2026-09-01', status_history: [], created_at: '2026-09-01', updated_at: '2026-09-01' },
-  { id: 'ref-4', name: 'Aisha Steel or Petrochem manager', status: 'not_contacted', status_changed_at: '2026-09-01', status_history: [], created_at: '2026-09-01', updated_at: '2026-09-01' },
-  { id: 'ref-5', name: 'DeepLearning.AI program contact', status: 'not_contacted', status_changed_at: '2026-09-01', status_history: [], created_at: '2026-09-01', updated_at: '2026-09-01' },
+  { id: 'ref-1', name: 'Dr. Samira Okafor', affiliation: 'Associate Professor', relationship: 'Final-year project supervisor', status: 'contacted', status_changed_at: '2026-10-05', status_history: [{ status: 'not_contacted', at: '2026-09-01' }, { status: 'contacted', at: '2026-10-05' }], created_at: '2026-09-01', updated_at: '2026-10-05' },
+  { id: 'ref-2', name: 'Prof. Daniel Achterberg', relationship: 'Course instructor, signal processing', status: 'not_contacted', status_changed_at: '2026-09-01', status_history: [], created_at: '2026-09-01', updated_at: '2026-09-01' },
+  { id: 'ref-3', name: 'Dr. Kenji Watanabe', relationship: 'Research internship mentor', status: 'not_contacted', status_changed_at: '2026-09-01', status_history: [], created_at: '2026-09-01', updated_at: '2026-09-01' },
+  { id: 'ref-4', name: 'Lena Moreau', relationship: 'Engineering manager, summer internship', status: 'not_contacted', status_changed_at: '2026-09-01', status_history: [], created_at: '2026-09-01', updated_at: '2026-09-01' },
+  { id: 'ref-5', name: 'Priya Raman', relationship: 'Hackathon organiser', status: 'not_contacted', status_changed_at: '2026-09-01', status_history: [], created_at: '2026-09-01', updated_at: '2026-09-01' },
 ]
 
 export const mockMissedDeadlines: MissedDeadline[] = [
